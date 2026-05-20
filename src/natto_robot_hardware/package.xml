@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>natto_robot_hardware</name>
+  <version>0.0.1</version>
+  <description>SerialBridge based real robot hardware bridge for natto_library</description>
+
+  <maintainer email="todo@example.com">nek</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

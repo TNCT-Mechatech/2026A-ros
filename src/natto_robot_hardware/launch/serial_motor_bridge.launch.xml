@@ -1,0 +1,9 @@
+<launch>
+  <node
+    pkg="natto_robot_hardware"
+    exec="serial_motor_bridge"
+    name="serial_motor_bridge"
+    output="screen">
+    <param from="$(find-pkg-share natto_robot_hardware)/config/serial_motor_bridge.yaml"/>
+  </node>
+</launch>

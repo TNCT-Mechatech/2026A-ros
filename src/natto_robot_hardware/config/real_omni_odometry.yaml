@@ -1,0 +1,22 @@
+wheel_odometry:
+  ros__parameters:
+    chassis_type: "omni"
+
+    # 実機のタイヤ半径[m]に後で合わせる
+    wheel_radius: 0.05
+
+    wheel_names:
+      - "wheel_0"
+      - "wheel_1"
+      - "wheel_2"
+      - "wheel_3"
+
+    wheel_base_names:
+      - "wheel_0_base"
+      - "wheel_1_base"
+      - "wheel_2_base"
+      - "wheel_3_base"
+
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"
+    publish_tf: true

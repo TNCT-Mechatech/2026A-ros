@@ -1,0 +1,2 @@
+natto_msgs/LineSegmentArray line_segments
+natto_msgs/CircleArray circles

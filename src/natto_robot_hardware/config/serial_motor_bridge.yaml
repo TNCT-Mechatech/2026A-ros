@@ -1,0 +1,22 @@
+serial_motor_bridge:
+  ros__parameters:
+    # serial_path: "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2
+
+    command_topic: "/wheel_command"
+    joint_state_topic: "/joint_states"
+
+    # natto側がJointState.velocityをrad/sで出すならradps
+    # すでにrpsならrps
+    input_unit: "rps"
+
+    max_rps: 2.0
+    timeout_ms: 300
+
+    command_frame_id: 0
+    feedback_frame_id: 1
+
+    wheel_names:
+      - "wheel_0"
+      - "wheel_1"
+      - "wheel_2"
+      - "wheel_3"

@@ -1,0 +1,81 @@
+<launch>
+    <node_container pkg="rclcpp_components" exec="component_container" name="dynamic_auto_control_container" namespace="control">
+         <!-- 経路計算  -->
+        <composable_node pkg="natto_astar_planner" plugin="astar_planner::astar_planner" name="astar_planner" namespace="/planning">
+            <param from="$(var planning_param_path)"/>
+            <remap from="occupancy_grid" to="/common/occupancy_grid"/>
+            <remap from="goal_pose" to="/goal_pose"/>
+            <remap from="current_pose" to="/localization/current_pose"/>
+            <remap from="path" to="/planning/path"/>
+            <remap from="footprint" to="/common/footprint"/>
+            <remap from="goal_reached" to="/control/dynamic/goal_reached"/>
+        </composable_node>
+
+         <!-- 経路追従 -->
+        <composable_node pkg="natto_holonomic_pure_pursuit" plugin="holonomic_pure_pursuit::holonomic_pure_pursuit" name="holonomic_pure_pursuit" namespace="/control">
+            <param from="$(var control_param_path)"/>
+            <remap from="current_pose" to="/localization/current_pose"/>
+            <remap from="path" to="/planning/path"/>
+            <remap from="goal_reached" to="/control/dynamic/goal_reached"/>
+        </composable_node>
+    </node_container>
+
+    <node_container pkg="rclcpp_components" exec="component_container" name="static_auto_control_container" namespace="control">
+        <composable_node pkg="natto_speed_path" plugin="speed_path_loader::speed_path_loader" name="speed_path_loader" namespace="/planning">
+            <param name="file_directory" value="$(var speed_path_directory)"/>
+            <remap from="goal_pose" to="/goal_pose"/>
+            <remap from="speed_path" to="/planning/speed_path"/>
+            <remap from="goal_reached" to="/control/static/goal_reached"/>
+            <remap from="state_action" to="/behavior/state_action"/>
+            <remap from="state_result" to="/behavior/state_result"/>
+            <param name="reverse_y" value="$(var reverse_y)"/>
+            <param name="reverse_y_offset" value="$(var reverse_y_offset)"/>
+        </composable_node>
+
+        <!-- speed path追従 -->
+        <composable_node pkg="natto_speed_path_controller" plugin="speed_path_controller::speed_path_controller" name="speed_path_controller" namespace="/control">
+            <param from="$(var control_param_path)"/>
+            <remap from="current_pose" to="/localization/current_pose"/>
+            <remap from="speed_path" to="/planning/speed_path"/>
+            <remap from="goal_reached" to="/control/static/goal_reached"/>
+        </composable_node>
+    </node_container>
+   
+    <node_container pkg="rclcpp_components" exec="component_container" name="control_container" namespace="control">
+        <!-- 目標計算 -->
+        <composable_node pkg="natto_chassis_calculator" plugin="chassis_calculator::chassis_calculator" name="chassis_calculator" namespace="/control/$(var chassis_type)">
+            <param from="$(var chassis_param_path)"/>
+            <remap from="command_joint_states" to="/$(var chassis_type)/command_joint_states"/>
+            <remap from="joint_states" to="/joint_states"/>
+            <remap from="command_velocity" to="/command_velocity"/>
+        </composable_node>
+        
+        <!-- joy twist変換 -->
+        <composable_node pkg="natto_joy" plugin="joy_to_twist::joy_to_twist" name="joy_to_twist" namespace="/controller">
+            <param name="max_xy_speed_m_s" value="$(var controller_max_xy_speed_m_s)"/>
+            <param name="max_yaw_speed_rad_s" value="$(var controller_max_yaw_speed_rad_s)"/>
+            <remap from="command_velocity" to="/controller/command_velocity"/>
+            <remap from="joy" to="/controller/joy"/>
+        </composable_node>
+
+        <!-- joy ボタン選択 -->
+        <composable_node pkg="natto_joy" plugin="button_manager::button_manager" name="button_manager" namespace="/controller">
+            <param from="$(var controller_param_path)"/>
+            <remap from="allow_auto_drive" to="/controller/allow_auto_drive"/>
+            <remap from="get_origin_joint_name" to="/get_origin_joint_name"/>
+        </composable_node>
+
+        <!-- コマンド選択 -->
+        <composable_node pkg="natto_command_selector" plugin="twist_selector::twist_selector" name="twist_selector" namespace="/control">
+            <remap from="allow_auto_drive" to="/controller/allow_auto_drive"/>
+            <remap from="manual_twist" to="/controller/command_velocity"/>
+            <remap from="auto_twist" to="/control/command_velocity"/>
+            <remap from="selected_twist" to="/command_velocity"/>
+            <param name="initial_allow_auto_drive" value="$(var initial_allow_auto_drive)"/>
+        </composable_node>
+    </node_container>
+
+    <node pkg="joy" exec="game_controller_node" name="joy" output="screen" namespace="/controller">
+        <param name="deadzone" value="0.1"/>
+    </node>
+</launch>

@@ -1,0 +1,3 @@
+[submodule "SerialBridge"]
+	path = SerialBridge
+	url = https://github.com/TNCT-Mechatech/SerialBridge.git
