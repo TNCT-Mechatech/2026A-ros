@@ -11,6 +11,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "debug_msgs/msg/pid_gain.hpp"
+#include "debug_msgs/msg/feedback.hpp"
 
 #include "natto_robot_hardware/serial_packets.hpp"
 
@@ -88,11 +90,6 @@ public:
 private:
   void open_serial()
   {
-    /*
-      SerialBridge側のボーレート指定。
-      READMEの例に合わせて B9600 にしてある。
-      速くしたい場合は B115200 などに変更する。
-    */
     dev_ = new LinuxHardwareSerial(serial_path_.c_str(), B115200);
     serial_ = new SerialBridge(dev_);
   }
@@ -191,6 +188,8 @@ private:
   std::string command_topic_;
   std::string joint_state_topic_;
   std::string input_unit_;
+
+  std::string feedback_monitor_topic_;
 
   double max_rps_;
   int timeout_ms_;

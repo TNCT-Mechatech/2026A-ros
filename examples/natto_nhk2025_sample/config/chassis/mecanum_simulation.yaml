@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
-    initial_pose_x: 1.0
-    initial_pose_y: 1.0
+    initial_pose_x: 9.5
+    initial_pose_y: 3.4
     initial_pose_yaw_deg: 0.0
 
     frequency: 100.0
