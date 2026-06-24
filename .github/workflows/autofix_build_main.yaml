@@ -31,6 +31,7 @@ jobs:
       - name: Commit and push changes
         working-directory: ${{ github.workspace }}
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
 
@@ -46,6 +47,7 @@ jobs:
         id: build_test
         working-directory: ${{ github.workspace }}
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . /opt/ros/jazzy/setup.sh
           ./colcon_build.sh
         continue-on-error: true
