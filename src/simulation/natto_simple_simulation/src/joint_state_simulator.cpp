@@ -326,11 +326,7 @@ void joint_state_simulator::timer_callback () {
             }
 
             if (!found) {
-                RCLCPP_WARN (
-                    this->get_logger (),
-                    "Could not find wheel joint: %s",
-                    wheel_names_[i].c_str ()
-                );
+                RCLCPP_WARN (this->get_logger (), "Could not find wheel joint: %s", wheel_names_[i].c_str ());
                 return;
             }
 
@@ -338,45 +334,26 @@ void joint_state_simulator::timer_callback () {
             double wheel_position_y = 0.0;
 
             try {
-                geometry_msgs::msg::TransformStamped tf_stamped =
-                    tf_buffer_->lookupTransform (
-                        "command/base_link",
-                        "command/" + wheel_base_names_[i] + "_link",
-                        tf2::TimePointZero
-                    );
+                geometry_msgs::msg::TransformStamped tf_stamped = tf_buffer_->lookupTransform ("command/base_link", "command/" + wheel_base_names_[i] + "_link", tf2::TimePointZero);
 
                 wheel_position_x = tf_stamped.transform.translation.x;
                 wheel_position_y = tf_stamped.transform.translation.y;
             } catch (tf2::TransformException &ex) {
-                RCLCPP_WARN (
-                    this->get_logger (),
-                    "Could not get transform from %s to base_link: %s",
-                    wheel_base_names_[i].c_str (),
-                    ex.what ()
-                );
+                RCLCPP_WARN (this->get_logger (), "Could not get transform from %s to base_link: %s", wheel_base_names_[i].c_str (), ex.what ());
                 return;
             }
 
             if (std::fabs (wheel_position_x) < 1e-9 || std::fabs (wheel_position_y) < 1e-9) {
-                RCLCPP_WARN (
-                    this->get_logger (),
-                    "mecanum wheel position x/y must not be zero. wheel: %s",
-                    wheel_base_names_[i].c_str ()
-                );
+                RCLCPP_WARN (this->get_logger (), "mecanum wheel position x/y must not be zero. wheel: %s", wheel_base_names_[i].c_str ());
                 return;
             }
 
             const double sign_xy = (wheel_position_x * wheel_position_y >= 0.0) ? 1.0 : -1.0;
             const double sign_y  = (wheel_position_y >= 0.0) ? 1.0 : -1.0;
 
-            const double rotation_radius =
-                std::fabs (wheel_position_x) + std::fabs (wheel_position_y);
+            const double rotation_radius = std::fabs (wheel_position_x) + std::fabs (wheel_position_y);
 
-            double ax[3] = {
-                1.0,
-                -sign_xy,
-                -sign_y * rotation_radius
-            };
+            double ax[3] = {1.0, -sign_xy, -sign_y * rotation_radius};
 
             const double b = speed;
 
@@ -398,10 +375,7 @@ void joint_state_simulator::timer_callback () {
             double pivot = A[i][i];
 
             if (std::fabs (pivot) < 1e-9) {
-                RCLCPP_WARN (
-                    this->get_logger (),
-                    "mecanum forward kinematics matrix is singular"
-                );
+                RCLCPP_WARN (this->get_logger (), "mecanum forward kinematics matrix is singular");
                 return;
             }
 

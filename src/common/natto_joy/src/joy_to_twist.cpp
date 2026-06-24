@@ -36,14 +36,7 @@ void joy_to_twist::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
 
 double joy_to_twist::get_axis (const sensor_msgs::msg::Joy &msg, int64_t axis) const {
     if (axis < 0 || static_cast<size_t> (axis) >= msg.axes.size ()) {
-        RCLCPP_WARN_THROTTLE (
-            this->get_logger (),
-            *this->get_clock (),
-            3000,
-            "Joy axis %ld is out of range. axes size: %zu",
-            axis,
-            msg.axes.size ()
-        );
+        RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 3000, "Joy axis %ld is out of range. axes size: %zu", axis, msg.axes.size ());
         return 0.0;
     }
     return msg.axes[static_cast<size_t> (axis)];

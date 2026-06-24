@@ -161,36 +161,18 @@ void chassis_calculator::command_velocity_callback (const geometry_msgs::msg::Tw
             double wheel_position_y;
 
             try {
-                geometry_msgs::msg::TransformStamped tf_stamped =
-                    tf_buffer_->lookupTransform (
-                        "command/base_link",
-                        "command/" + wheel_base_names_[i] + "_link",
-                        tf2::TimePointZero
-                    );
+                geometry_msgs::msg::TransformStamped tf_stamped = tf_buffer_->lookupTransform ("command/base_link", "command/" + wheel_base_names_[i] + "_link", tf2::TimePointZero);
 
                 wheel_position_x = tf_stamped.transform.translation.x;
                 wheel_position_y = tf_stamped.transform.translation.y;
             } catch (tf2::TransformException &ex) {
-                RCLCPP_WARN_THROTTLE (
-                    this->get_logger (),
-                    *this->get_clock (),
-                    3000,
-                    "Could not get transform from %s to base_link: %s",
-                    wheel_base_names_[i].c_str (),
-                    ex.what ()
-                );
+                RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 3000, "Could not get transform from %s to base_link: %s", wheel_base_names_[i].c_str (), ex.what ());
                 command_joint_state_publisher_->publish (command_joint_state_);
                 return;
             }
 
             if (std::abs (wheel_position_x) < 1e-9 || std::abs (wheel_position_y) < 1e-9) {
-                RCLCPP_WARN_THROTTLE (
-                    this->get_logger (),
-                    *this->get_clock (),
-                    3000,
-                    "mecanum wheel position x/y must not be zero. wheel: %s",
-                    wheel_base_names_[i].c_str ()
-                );
+                RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 3000, "mecanum wheel position x/y must not be zero. wheel: %s", wheel_base_names_[i].c_str ());
                 command_joint_state_.velocity[i] = 0.0;
                 continue;
             }
@@ -198,11 +180,9 @@ void chassis_calculator::command_velocity_callback (const geometry_msgs::msg::Tw
             const double sign_xy = (wheel_position_x * wheel_position_y >= 0.0) ? 1.0 : -1.0;
             const double sign_y  = (wheel_position_y >= 0.0) ? 1.0 : -1.0;
 
-            const double rotation_radius =
-                std::abs (wheel_position_x) + std::abs (wheel_position_y);
+            const double rotation_radius = std::abs (wheel_position_x) + std::abs (wheel_position_y);
 
-            const double wheel_linear_velocity =
-                x - sign_xy * y - sign_y * rotation_radius * z;
+            const double wheel_linear_velocity = x - sign_xy * y - sign_y * rotation_radius * z;
 
             command_joint_state_.velocity[i] = wheel_linear_velocity / wheel_radius_;
         }

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "natto_wheel_odometry/wheel_odometry.hpp"
+
 #include <cmath>
 
 namespace wheel_odometry {
@@ -227,11 +228,7 @@ void wheel_odometry::joint_state_callback (const sensor_msgs::msg::JointState::S
             }
 
             if (!found_wheel) {
-                RCLCPP_WARN (
-                    this->get_logger (),
-                    "Could not find wheel joint: %s",
-                    wheel_names_[i].c_str ()
-                );
+                RCLCPP_WARN (this->get_logger (), "Could not find wheel joint: %s", wheel_names_[i].c_str ());
                 return;
             }
 
@@ -239,49 +236,26 @@ void wheel_odometry::joint_state_callback (const sensor_msgs::msg::JointState::S
             double wheel_position_y = 0.0;
 
             try {
-                geometry_msgs::msg::TransformStamped tf_stamped =
-                    tf_buffer_->lookupTransform (
-                        "command/base_link",
-                        "command/" + wheel_base_names_[i] + "_link",
-                        tf2::TimePointZero
-                    );
+                geometry_msgs::msg::TransformStamped tf_stamped = tf_buffer_->lookupTransform ("command/base_link", "command/" + wheel_base_names_[i] + "_link", tf2::TimePointZero);
 
                 wheel_position_x = tf_stamped.transform.translation.x;
                 wheel_position_y = tf_stamped.transform.translation.y;
             } catch (tf2::TransformException &ex) {
-                RCLCPP_WARN_THROTTLE (
-                    this->get_logger (),
-                    *this->get_clock (),
-                    3000,
-                    "Could not get transform from %s to base_link: %s",
-                    wheel_base_names_[i].c_str (),
-                    ex.what ()
-                );
+                RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 3000, "Could not get transform from %s to base_link: %s", wheel_base_names_[i].c_str (), ex.what ());
                 return;
             }
 
             if (std::fabs (wheel_position_x) < 1e-9 || std::fabs (wheel_position_y) < 1e-9) {
-                RCLCPP_WARN_THROTTLE (
-                    this->get_logger (),
-                    *this->get_clock (),
-                    3000,
-                    "mecanum wheel position x/y must not be zero. wheel: %s",
-                    wheel_base_names_[i].c_str ()
-                );
+                RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 3000, "mecanum wheel position x/y must not be zero. wheel: %s", wheel_base_names_[i].c_str ());
                 return;
             }
 
             const double sign_xy = (wheel_position_x * wheel_position_y >= 0.0) ? 1.0 : -1.0;
             const double sign_y  = (wheel_position_y >= 0.0) ? 1.0 : -1.0;
 
-            const double rotation_radius =
-                std::fabs (wheel_position_x) + std::fabs (wheel_position_y);
+            const double rotation_radius = std::fabs (wheel_position_x) + std::fabs (wheel_position_y);
 
-            const double a[3] = {
-                1.0,
-                -sign_xy,
-                -sign_y * rotation_radius
-            };
+            const double a[3] = {1.0, -sign_xy, -sign_y * rotation_radius};
 
             const double b = speed;
 
@@ -303,10 +277,7 @@ void wheel_odometry::joint_state_callback (const sensor_msgs::msg::JointState::S
             double pivot = A[i][i];
 
             if (std::fabs (pivot) < 1e-9) {
-                RCLCPP_WARN (
-                    this->get_logger (),
-                    "mecanum odometry matrix is singular"
-                );
+                RCLCPP_WARN (this->get_logger (), "mecanum odometry matrix is singular");
                 return;
             }
 
