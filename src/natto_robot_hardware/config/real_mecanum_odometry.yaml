@@ -1,0 +1,21 @@
+wheel_odometry:
+  ros__parameters:
+    chassis_type: "mecanum"
+
+    wheel_radius: 0.05
+
+    wheel_names:
+      - "mecanum_wheel_fl"
+      - "mecanum_wheel_fr"
+      - "mecanum_wheel_rl"
+      - "mecanum_wheel_rr"
+
+    wheel_base_names:
+      - "mecanum_wheel_fl_base"
+      - "mecanum_wheel_fr_base"
+      - "mecanum_wheel_rl_base"
+      - "mecanum_wheel_rr_base"
+
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"
+    publish_tf: true

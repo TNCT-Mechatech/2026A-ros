@@ -1,13 +1,13 @@
 serial_motor_bridge:
   ros__parameters:
-    # serial_path: "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2
+    # serial_path: "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2"
 
-    command_topic: "/wheel_command"
+    command_topic: "/command_joint_states"
     joint_state_topic: "/joint_states"
 
-    # natto側がJointState.velocityをrad/sで出すならradps
-    # すでにrpsならrps
-    input_unit: "rps"
+    # ROS側のJointState.velocityはrad/s、シリアル送受信の車輪速度はrps。
+    # このbridge内でrad/s -> rpsへ変換してマイコンへ送ります。
+    input_unit: "radps"
 
     max_rps: 2.0
     timeout_ms: 300
@@ -16,7 +16,7 @@ serial_motor_bridge:
     feedback_frame_id: 1
 
     wheel_names:
-      - "wheel_0"
-      - "wheel_1"
-      - "wheel_2"
-      - "wheel_3"
+      - "mecanum_wheel_fl"
+      - "mecanum_wheel_fr"
+      - "mecanum_wheel_rl"
+      - "mecanum_wheel_rr"

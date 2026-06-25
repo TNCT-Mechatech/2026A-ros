@@ -1,0 +1,9 @@
+<launch>
+  <node
+    pkg="natto_wheel_odometry"
+    exec="wheel_odometry"
+    name="wheel_odometry"
+    output="screen">
+    <param from="$(find-pkg-share natto_robot_hardware)/config/real_mecanum_odometry.yaml"/>
+  </node>
+</launch>

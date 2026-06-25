@@ -37,6 +37,8 @@
     <arg name="launch_sensing" default="true"/>
     <arg name="launch_localization" default="true"/>
     <arg name="launch_control" default="true"/>
+    <arg name="launch_dynamic_auto_control" default="true"/>
+    <arg name="launch_static_auto_control" default="false"/>
     <arg name="launch_visualization" default="true"/>
 
     <arg name="joint_state_topics" default="['/$(var chassis_type)/command_joint_states', '/controller/joint_states', '/behavior/command_joint_states']"/>

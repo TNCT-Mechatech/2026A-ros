@@ -1,5 +1,5 @@
 <launch>
-    <node_container pkg="rclcpp_components" exec="component_container" name="dynamic_auto_control_container" namespace="control">
+    <node_container pkg="rclcpp_components" exec="component_container" name="dynamic_auto_control_container" namespace="control" if="$(var launch_dynamic_auto_control)">
          <!-- 経路計算  -->
         <composable_node pkg="natto_astar_planner" plugin="astar_planner::astar_planner" name="astar_planner" namespace="/planning">
             <param from="$(var planning_param_path)"/>
@@ -20,7 +20,7 @@
         </composable_node>
     </node_container>
 
-    <node_container pkg="rclcpp_components" exec="component_container" name="static_auto_control_container" namespace="control">
+    <node_container pkg="rclcpp_components" exec="component_container" name="static_auto_control_container" namespace="control" if="$(var launch_static_auto_control)">
         <composable_node pkg="natto_speed_path" plugin="speed_path_loader::speed_path_loader" name="speed_path_loader" namespace="/planning">
             <param name="file_directory" value="$(var speed_path_directory)"/>
             <remap from="goal_pose" to="/goal_pose"/>

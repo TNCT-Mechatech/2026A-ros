@@ -9,7 +9,6 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(debug_msgs REQUIRED)
 
 set(SERIAL_BRIDGE_DIR ${CMAKE_CURRENT_LIST_DIR}/../../SerialBridge)
 
@@ -37,7 +36,6 @@ ament_target_dependencies(serial_motor_bridge
   rclcpp
   sensor_msgs
   std_msgs
-  debug_msgs
 )
 
 target_link_libraries(serial_motor_bridge

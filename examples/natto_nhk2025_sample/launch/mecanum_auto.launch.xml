@@ -1,0 +1,48 @@
+<launch>
+    <arg name="serial_path" default="/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2"/>
+    <arg name="launch_behavior" default="true"/>
+    <arg name="launch_sensing" default="true"/>
+    <arg name="launch_localization" default="true"/>
+    <arg name="launch_visualization" default="true"/>
+    <arg name="launch_dynamic_auto_control" default="true"/>
+    <arg name="launch_static_auto_control" default="false"/>
+    <arg name="speed_path_directory" default=""/>
+    <arg name="controller_max_xy_speed_m_s" default="0.3"/>
+    <arg name="controller_max_yaw_speed_rad_s" default="1.0"/>
+
+    <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml">
+        <arg name="chassis_type" value="mecanum"/>
+        <arg name="chassis_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/chassis/mecanum.yaml"/>
+        <arg name="urdf_path" value="$(find-pkg-share natto_nhk2025_sample)/urdf/mecanum_sample.urdf.xacro"/>
+        <arg name="line_segments_path" value="$(find-pkg-share natto_nhk2025_sample)/config/map/line_segments.csv"/>
+        <arg name="circles_path" value="$(find-pkg-share natto_nhk2025_sample)/config/map/circles.csv"/>
+        <arg name="footprint_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/footprint.yaml"/>
+        <arg name="lidar_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/lidar.yaml"/>
+        <arg name="control_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/control.yaml"/>
+        <arg name="planning_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/planning.yaml"/>
+        <arg name="localization_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/localization.yaml"/>
+        <arg name="controller_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/controller.yaml"/>
+        <arg name="state_graph_path" value="$(find-pkg-share natto_nhk2025_sample)/state_graph/sample.md"/>
+        <arg name="joint_rule_path" value="$(find-pkg-share natto_nhk2025_sample)/config/joint_rule.yaml"/>
+        <arg name="launch_simulation" value="false"/>
+        <arg name="launch_behavior" value="$(var launch_behavior)"/>
+        <arg name="launch_sensing" value="$(var launch_sensing)"/>
+        <arg name="launch_localization" value="$(var launch_localization)"/>
+        <arg name="launch_visualization" value="$(var launch_visualization)"/>
+        <arg name="launch_dynamic_auto_control" value="$(var launch_dynamic_auto_control)"/>
+        <arg name="launch_static_auto_control" value="$(var launch_static_auto_control)"/>
+        <arg name="speed_path_directory" value="$(var speed_path_directory)"/>
+        <arg name="initial_allow_auto_drive" value="false"/>
+        <arg name="controller_max_xy_speed_m_s" value="$(var controller_max_xy_speed_m_s)"/>
+        <arg name="controller_max_yaw_speed_rad_s" value="$(var controller_max_yaw_speed_rad_s)"/>
+    </include>
+
+    <node
+      pkg="natto_robot_hardware"
+      exec="serial_motor_bridge"
+      name="serial_motor_bridge"
+      output="screen">
+      <param from="$(find-pkg-share natto_robot_hardware)/config/serial_motor_bridge.yaml"/>
+      <param name="serial_path" value="$(var serial_path)"/>
+    </node>
+</launch>
