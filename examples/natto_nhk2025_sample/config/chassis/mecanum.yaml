@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     chassis_type : "mecanum"
-    wheel_radius : 0.05
+    wheel_radius : 0.076
 
     wheel_names : [
       "mecanum_wheel_fl",

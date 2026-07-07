@@ -2,8 +2,8 @@
   ros__parameters:
     axis_linear_x: 1
     axis_linear_y: 0
-    axis_yaw: 3
-    joy_deadzone: 0.1
+    axis_yaw: 2
+    joy_deadzone: 0.0
 
     num_button: 4
     button_0:

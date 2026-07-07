@@ -77,6 +77,6 @@
     </node_container>
 
     <node pkg="joy" exec="game_controller_node" name="joy" output="screen" namespace="/controller">
-        <param name="deadzone" value="0.1"/>
+        <param name="deadzone" value="0.0"/>
     </node>
 </launch>

@@ -9,6 +9,8 @@
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
 
+  <exec_depend>lakibeam1</exec_depend>
+
   <!-- <depend> 依存関係追加 </depend> -->
 
   <export>
