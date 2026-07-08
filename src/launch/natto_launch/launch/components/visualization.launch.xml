@@ -1,4 +1,9 @@
 <launch>
+    <arg name="fps" default="15.0"/>
+    <arg name="use_dark_rviz" default="true"/>
+    <arg name="rviz_path" default="$(find-pkg-share natto_launch)/rviz/sample.rviz"/>
+    <arg name="launch_rviz" default="true"/>
+
     <!-- 表示コンテナ -->
     <node_container pkg="rclcpp_components" exec="component_container" name="visualization_container" namespace="visualization">
         <!-- マップ表示 -->
@@ -33,11 +38,11 @@
         </composable_node>
     </node_container>
 
-    <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen"
-        args="-d $(var rviz_path) --stylesheet $(find-pkg-share natto_launch)/rviz/dark.qss" if="$(var use_dark_rviz)"/>
+    <group if="$(var launch_rviz)">
+        <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen"
+            args="-d $(var rviz_path) --stylesheet $(find-pkg-share natto_launch)/rviz/dark.qss" if="$(var use_dark_rviz)"/>
 
-    <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen"
-        args="-d $(var rviz_path)" unless="$(var use_dark_rviz)"/>
-
-    
+        <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen"
+            args="-d $(var rviz_path)" unless="$(var use_dark_rviz)"/>
+    </group>
 </launch>
