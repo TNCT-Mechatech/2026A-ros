@@ -5,16 +5,13 @@
     axis_yaw: 2
     joy_deadzone: 0.0
 
-    num_button: 4
+    num_button: 17
     button_0:
       function: "power"
       mode: "toggle_off"
     button_1:
       function: "power"
       mode: "toggle_on"
-    button_2:
+    button_16:
       function: "allow_auto_drive"
-      mode: "toggle_on"
-    button_3:
-      function: "allow_auto_drive"
-      mode: "toggle_off"
+      mode: "hold"

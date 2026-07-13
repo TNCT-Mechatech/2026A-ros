@@ -9,7 +9,7 @@ serial_motor_bridge:
     # このbridge内でrad/s -> rpsへ変換してマイコンへ送ります。
     input_unit: "radps"
 
-    max_rps: 2.0
+    max_rps: 4.0
     timeout_ms: 300
 
     command_frame_id: 0

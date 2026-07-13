@@ -2,10 +2,28 @@
 
 #include <cstdint>
 
+struct MotorCommand {
+    float target_wheel_rps;
+    float kp;
+    float ki;
+    float kd;
+    bool set_direction;
+    bool pid_state;
+    bool stop_mode;
+};
+
+struct MotorFeedback {
+    float measured_wheel_rps;
+    float output;
+    float encoder_count;
+    float duty;
+    bool  dir;
+};
+
 struct MotorCommandPacket {
-    float target_wheel_rps[4];
+    MotorCommand mc[4];
 };
 
 struct MotorFeedbackPacket {
-    float measured_wheel_rps[4];
+    MotorFeedback mfd[4];
 };

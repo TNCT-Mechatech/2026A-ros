@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(natto_robot_hardware)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -9,6 +11,8 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(debug_msgs REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 set(SERIAL_BRIDGE_DIR ${CMAKE_CURRENT_LIST_DIR}/../../SerialBridge)
 
@@ -36,10 +40,12 @@ ament_target_dependencies(serial_motor_bridge
   rclcpp
   sensor_msgs
   std_msgs
+  debug_msgs
 )
 
 target_link_libraries(serial_motor_bridge
   ${SERIAL_BRIDGE_DIR}/bin/libSerialBridge.a
+  yaml-cpp
 )
 
 install(TARGETS
