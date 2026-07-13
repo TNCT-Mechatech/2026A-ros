@@ -1,3 +1,14 @@
+#include "natto_robot_hardware/serial_packets.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "yaml-cpp/yaml.h"
+
+#include <LinuxHardwareSerial.hpp>
+#include <Message.hpp>
+#include <SerialBridge.hpp>
+
+#include "debug_msgs/msg/feedback.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -7,332 +18,273 @@
 #include <string>
 #include <vector>
 
-#include <LinuxHardwareSerial.hpp>
-#include <Message.hpp>
-#include <SerialBridge.hpp>
-
-#include "debug_msgs/msg/feedback.hpp"
-#include "rclcpp/rclcpp.hpp"
-#include "sensor_msgs/msg/joint_state.hpp"
-#include "yaml-cpp/yaml.h"
-
-#include "natto_robot_hardware/serial_packets.hpp"
-
 using namespace std::chrono_literals;
 
-class SerialMotorBridge : public rclcpp::Node
-{
-public:
-  SerialMotorBridge()
-  : Node("serial_motor_bridge")
-  {
-    serial_path_ = declare_parameter<std::string>(
-      "serial_path",
-      "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2"
-    );
-    command_topic_ = declare_parameter<std::string>("command_topic", "/command_joint_states");
-    joint_state_topic_ = declare_parameter<std::string>("joint_state_topic", "/joint_states");
+class SerialMotorBridge : public rclcpp::Node {
+   public:
+    SerialMotorBridge () : Node ("serial_motor_bridge") {
+        serial_path_       = declare_parameter<std::string> ("serial_path", "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2");
+        command_topic_     = declare_parameter<std::string> ("command_topic", "/command_joint_states");
+        joint_state_topic_ = declare_parameter<std::string> ("joint_state_topic", "/joint_states");
 
-    pid_gain_config_path_ = declare_parameter<std::string> ("gain_config_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
+        pid_gain_config_path_ = declare_parameter<std::string> ("gain_config_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
 
-    stop_mode_ = declare_parameter<bool> ("stop_mode", false);
+        stop_mode_ = declare_parameter<bool> ("stop_mode", false);
 
-    input_unit_ = declare_parameter<std::string>("input_unit", "radps");
-    max_rps_ = declare_parameter<double>("max_rps", 4.0);
-    timeout_ms_ = declare_parameter<int64_t>("timeout_ms", 300);
+        input_unit_ = declare_parameter<std::string> ("input_unit", "radps");
+        max_rps_    = declare_parameter<double> ("max_rps", 4.0);
+        timeout_ms_ = declare_parameter<int64_t> ("timeout_ms", 300);
 
-    command_frame_id_ = declare_parameter<int64_t>("command_frame_id", 0);
-    feedback_frame_id_ = declare_parameter<int64_t>("feedback_frame_id", 1);
+        command_frame_id_  = declare_parameter<int64_t> ("command_frame_id", 0);
+        feedback_frame_id_ = declare_parameter<int64_t> ("feedback_frame_id", 1);
 
-    std::vector<std::string> default_names = {
-      "mecanum_wheel_fl", "mecanum_wheel_fr", "mecanum_wheel_rl", "mecanum_wheel_rr"
-    };
-    wheel_names_ = declare_parameter<std::vector<std::string>>("wheel_names", default_names);
+        std::vector<std::string> default_names = {"mecanum_wheel_fl", "mecanum_wheel_fr", "mecanum_wheel_rl", "mecanum_wheel_rr"};
+        wheel_names_                           = declare_parameter<std::vector<std::string>> ("wheel_names", default_names);
 
-    pid  = declare_parameter<bool>("pid", true);
+        pid = declare_parameter<bool> ("pid", true);
 
-    open_serial();
+        open_serial ();
 
-    for (double & position : last_position_rad_) {
-      position = 0.0;
+        for (double &position : last_position_rad_) {
+            position = 0.0;
+        }
+
+        serial_->add_frame (static_cast<SerialBridge::frame_id> (command_frame_id_), &command_msg_);
+        serial_->add_frame (static_cast<SerialBridge::frame_id> (feedback_frame_id_), &feedback_msg_);
+
+        command_sub_ = create_subscription<sensor_msgs::msg::JointState> (command_topic_, rclcpp::SensorDataQoS (), std::bind (&SerialMotorBridge::command_callback, this, std::placeholders::_1));
+
+        joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState> (joint_state_topic_, rclcpp::SensorDataQoS ());
+
+        for (size_t i = 0; i < 4; ++i) {
+            feedback_pubs_.push_back (create_publisher<debug_msgs::msg::Feedback> ("feedback" + std::to_string (i), 10));
+        }
+
+        timer_ = create_wall_timer (10ms, std::bind (&SerialMotorBridge::timer_callback, this));
+
+        direction[0] = true;
+        direction[1] = true;
+        direction[2] = true;
+        direction[3] = true;
+
+        YAML::Node config = YAML::LoadFile ("/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
+
+        for (int i = 0; i < 4; i++) {
+            kp[i] = config["wheel" + std::to_string (i)]["kp"].as<float> ();
+            ki[i] = config["wheel" + std::to_string (i)]["ki"].as<float> ();
+            kd[i] = config["wheel" + std::to_string (i)]["kd"].as<float> ();
+        }
+
+        last_command_time_  = now ();
+        last_feedback_time_ = now ();
+
+        RCLCPP_INFO (get_logger (), "serial_motor_bridge started");
+        RCLCPP_INFO (get_logger (), "serial_path: %s", serial_path_.c_str ());
+        RCLCPP_INFO (get_logger (), "command_topic: %s", command_topic_.c_str ());
+        RCLCPP_INFO (get_logger (), "joint_state_topic: %s", joint_state_topic_.c_str ());
+        RCLCPP_INFO (get_logger (), "input_unit: %s", input_unit_.c_str ());
+        RCLCPP_INFO (get_logger (), "serial command/feedback unit: rps");
     }
 
-    serial_->add_frame(static_cast<SerialBridge::frame_id>(command_frame_id_), &command_msg_);
-    serial_->add_frame(static_cast<SerialBridge::frame_id>(feedback_frame_id_), &feedback_msg_);
+    ~SerialMotorBridge () override {
+        send_stop ();
 
-    command_sub_ = create_subscription<sensor_msgs::msg::JointState> (
-      command_topic_, rclcpp::SensorDataQoS (),
-      std::bind (&SerialMotorBridge::command_callback, this, std::placeholders::_1));
+        if (serial_ != nullptr) {
+            serial_->rm_frame (static_cast<SerialBridge::frame_id> (command_frame_id_));
+            serial_->rm_frame (static_cast<SerialBridge::frame_id> (feedback_frame_id_));
+        }
 
-    joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>(
-      joint_state_topic_,
-      rclcpp::SensorDataQoS()
-    );
-
-    for (size_t i = 0; i < 4; ++i) {
-      feedback_pubs_.push_back(
-        create_publisher<debug_msgs::msg::Feedback>("feedback" + std::to_string(i), 10)
-      );
-    }
-
-    timer_ = create_wall_timer(
-      10ms,
-      std::bind(&SerialMotorBridge::timer_callback, this)
-    );
-
-    direction[0] = true;
-    direction[1] = true;
-    direction[2] = true;
-    direction[3] = true;
-
-    YAML::Node config = YAML::LoadFile("/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
-
-    for(int i=0;i<4;i++)
-    {
-      kp[i] = config["wheel"+std::to_string(i)]["kp"].as<float>();
-      ki[i] = config["wheel"+std::to_string(i)]["ki"].as<float>();
-      kd[i] = config["wheel"+std::to_string(i)]["kd"].as<float>();
-    }
-
-    last_command_time_ = now();
-    last_feedback_time_ = now();
-
-    RCLCPP_INFO(get_logger(), "serial_motor_bridge started");
-    RCLCPP_INFO(get_logger(), "serial_path: %s", serial_path_.c_str());
-    RCLCPP_INFO(get_logger(), "command_topic: %s", command_topic_.c_str());
-    RCLCPP_INFO(get_logger(), "joint_state_topic: %s", joint_state_topic_.c_str());
-    RCLCPP_INFO(get_logger(), "input_unit: %s", input_unit_.c_str());
-    RCLCPP_INFO(get_logger(), "serial command/feedback unit: rps");
-  }
-
-  ~SerialMotorBridge() override
-  {
-    send_stop();
-
-    if (serial_ != nullptr) {
-      serial_->rm_frame(static_cast<SerialBridge::frame_id>(command_frame_id_));
-      serial_->rm_frame(static_cast<SerialBridge::frame_id>(feedback_frame_id_));
-    }
-
-    delete serial_;
+        delete serial_;
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdelete-non-virtual-dtor"
 #endif
-    delete dev_;
+        delete dev_;
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
-  }
-
-private:
-  void open_serial()
-  {
-    dev_ = new LinuxHardwareSerial(serial_path_.c_str(), B115200);
-    serial_ = new SerialBridge(dev_);
-  }
-
-  void command_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
-  {
-    last_command_time_ = now();
-
-    for (int i=0;i<4;i++)
-    {
-      command_msg_.data.mc[i].kp = kp[i];
-      command_msg_.data.mc[i].ki = ki[i];
-      command_msg_.data.mc[i].kd = 0.0f;
     }
 
-    for (size_t i = 0; i < 4; ++i) {
-      command_msg_.data.mc[i].target_wheel_rps = 0.0f;
-      command_msg_.data.mc[i].set_direction = direction[i];
-      command_msg_.data.mc[i].pid_state = pid;
-      command_msg_.data.mc[i].stop_mode = stop_mode_;
+   private:
+    void open_serial () {
+        dev_    = new LinuxHardwareSerial (serial_path_.c_str (), B115200);
+        serial_ = new SerialBridge (dev_);
     }
 
-    for (size_t i = 0; i < std::min<size_t>(4, wheel_names_.size()); ++i) {
-      double velocity = 0.0;
-      if (!get_command_velocity(*msg, i, velocity)) {
-        RCLCPP_WARN_THROTTLE(
-          get_logger(),
-          *get_clock(),
-          1000,
-          "command message has no velocity for %s",
-          wheel_names_[i].c_str()
-        );
-        continue;
-      }
+    void command_callback (const sensor_msgs::msg::JointState::SharedPtr msg) {
+        last_command_time_ = now ();
 
-      double rps = 0.0;
-      if (input_unit_ == "radps") {
-        rps = velocity / (2.0 * M_PI);
-      } else if (input_unit_ == "rps") {
-        rps = velocity;
-      } else {
-        RCLCPP_ERROR_THROTTLE(
-          get_logger(),
-          *get_clock(),
-          1000,
-          "invalid input_unit: %s",
-          input_unit_.c_str()
-        );
-        send_stop();
-        return;
-      }
+        for (int i = 0; i < 4; i++) {
+            command_msg_.data.mc[i].kp = kp[i];
+            command_msg_.data.mc[i].ki = ki[i];
+            command_msg_.data.mc[i].kd = 0.0f;
+        }
 
-      rps = std::clamp(rps, -max_rps_, max_rps_);
-      command_msg_.data.mc[i].target_wheel_rps = static_cast<float>(rps) * (i%2 != 0 ? -1 : 1);
+        for (size_t i = 0; i < 4; ++i) {
+            command_msg_.data.mc[i].target_wheel_rps = 0.0f;
+            command_msg_.data.mc[i].set_direction    = direction[i];
+            command_msg_.data.mc[i].pid_state        = pid;
+            command_msg_.data.mc[i].stop_mode        = stop_mode_;
+        }
+
+        for (size_t i = 0; i < std::min<size_t> (4, wheel_names_.size ()); ++i) {
+            double velocity = 0.0;
+            if (!get_command_velocity (*msg, i, velocity)) {
+                RCLCPP_WARN_THROTTLE (get_logger (), *get_clock (), 1000, "command message has no velocity for %s", wheel_names_[i].c_str ());
+                continue;
+            }
+
+            double rps = 0.0;
+            if (input_unit_ == "radps") {
+                rps = velocity / (2.0 * M_PI);
+            } else if (input_unit_ == "rps") {
+                rps = velocity;
+            } else {
+                RCLCPP_ERROR_THROTTLE (get_logger (), *get_clock (), 1000, "invalid input_unit: %s", input_unit_.c_str ());
+                send_stop ();
+                return;
+            }
+
+            rps                                      = std::clamp (rps, -max_rps_, max_rps_);
+            command_msg_.data.mc[i].target_wheel_rps = static_cast<float> (rps) * (i % 2 != 0 ? -1 : 1);
+        }
+
+        serial_->write (static_cast<SerialBridge::frame_id> (command_frame_id_));
     }
 
-    serial_->write(static_cast<SerialBridge::frame_id>(command_frame_id_));
-  }
+    bool get_command_velocity (const sensor_msgs::msg::JointState &msg, const size_t wheel_index, double &velocity) const {
+        if (msg.name.size () == msg.velocity.size ()) {
+            const auto name_it = std::find (msg.name.begin (), msg.name.end (), wheel_names_[wheel_index]);
+            if (name_it != msg.name.end ()) {
+                const size_t index = static_cast<size_t> (std::distance (msg.name.begin (), name_it));
+                velocity           = msg.velocity[index];
+                return true;
+            }
+        }
 
-  bool get_command_velocity(
-    const sensor_msgs::msg::JointState & msg,
-    const size_t wheel_index,
-    double & velocity) const
-  {
-    if (msg.name.size() == msg.velocity.size()) {
-      const auto name_it = std::find(
-        msg.name.begin(),
-        msg.name.end(),
-        wheel_names_[wheel_index]
-      );
-      if (name_it != msg.name.end()) {
-        const size_t index = static_cast<size_t>(std::distance(msg.name.begin(), name_it));
-        velocity = msg.velocity[index];
-        return true;
-      }
+        if (wheel_index < msg.velocity.size ()) {
+            velocity = msg.velocity[wheel_index];
+            return true;
+        }
+
+        return false;
     }
 
-    if (wheel_index < msg.velocity.size()) {
-      velocity = msg.velocity[wheel_index];
-      return true;
+    void timer_callback () {
+        serial_->update ();
+
+        const auto elapsed_ms = (now () - last_command_time_).nanoseconds () / 1000000;
+
+        if (elapsed_ms > timeout_ms_) {
+            send_stop ();
+        }
+
+        if (feedback_msg_.was_updated ()) {
+            last_feedback_time_ = now ();
+            publish_joint_state ();
+            publish_feedback ();
+        }
     }
 
-    return false;
-  }
+    void publish_joint_state () {
+        sensor_msgs::msg::JointState msg;
 
-  void timer_callback()
-  {
-    serial_->update();
+        msg.header.stamp = now ();
+        msg.name         = wheel_names_;
 
-    const auto elapsed_ms = (now() - last_command_time_).nanoseconds() / 1000000;
+        msg.position.resize (4);
+        msg.velocity.resize (4);
+        msg.effort.resize (4);
 
-    if (elapsed_ms > timeout_ms_) {
-      send_stop();
+        const double dt = 0.01;
+
+        for (size_t i = 0; i < 4; ++i) {
+            const double rps   = feedback_msg_.data.mfd[i].measured_wheel_rps;
+            const double radps = rps * 2.0 * M_PI;
+
+            last_position_rad_[i] += radps * dt;
+
+            msg.position[i] = last_position_rad_[i];
+            msg.velocity[i] = radps;
+            msg.effort[i]   = 0.0;
+        }
+
+        joint_state_pub_->publish (msg);
     }
 
-    if (feedback_msg_.was_updated()) {
-      last_feedback_time_ = now();
-      publish_joint_state();
-      publish_feedback();
-    }
-  }
+    void publish_feedback () {
+        for (size_t i = 0; i < feedback_pubs_.size (); ++i) {
+            const auto &feedback = feedback_msg_.data.mfd[i];
 
-  void publish_joint_state()
-  {
-    sensor_msgs::msg::JointState msg;
+            debug_msgs::msg::Feedback msg;
+            msg.output        = feedback.output;
+            msg.current_rps   = feedback.measured_wheel_rps;
+            msg.encoder_count = feedback.encoder_count;
+            msg.duty          = feedback.duty;
+            msg.dir           = feedback.dir;
+            msg.target_rps    = command_msg_.data.mc[i].target_wheel_rps;
 
-    msg.header.stamp = now();
-    msg.name = wheel_names_;
-
-    msg.position.resize(4);
-    msg.velocity.resize(4);
-    msg.effort.resize(4);
-
-    const double dt = 0.01;
-
-    for (size_t i = 0; i < 4; ++i) {
-      const double rps = feedback_msg_.data.mfd[i].measured_wheel_rps;
-      const double radps = rps * 2.0 * M_PI;
-
-      last_position_rad_[i] += radps * dt;
-
-      msg.position[i] = last_position_rad_[i];
-      msg.velocity[i] = radps;
-      msg.effort[i] = 0.0;
+            feedback_pubs_[i]->publish (msg);
+        }
     }
 
-    joint_state_pub_->publish(msg);
-  }
+    void send_stop () {
+        for (size_t i = 0; i < 4; ++i) {
+            command_msg_.data.mc[i].target_wheel_rps = 0.0f;
+        }
 
-  void publish_feedback()
-  {
-    for (size_t i = 0; i < feedback_pubs_.size(); ++i) {
-      const auto & feedback = feedback_msg_.data.mfd[i];
-
-      debug_msgs::msg::Feedback msg;
-      msg.output = feedback.output;
-      msg.current_rps = feedback.measured_wheel_rps;
-      msg.encoder_count = feedback.encoder_count;
-      msg.duty = feedback.duty;
-      msg.dir = feedback.dir;
-      msg.target_rps = command_msg_.data.mc[i].target_wheel_rps;
-
-      feedback_pubs_[i]->publish(msg);
-    }
-  }
-
-  void send_stop()
-  {
-    for (size_t i = 0; i < 4; ++i) {
-      command_msg_.data.mc[i].target_wheel_rps = 0.0f;
+        if (serial_ != nullptr) {
+            serial_->write (static_cast<SerialBridge::frame_id> (command_frame_id_));
+        }
     }
 
-    if (serial_ != nullptr) {
-      serial_->write(static_cast<SerialBridge::frame_id>(command_frame_id_));
-    }
-  }
+    std::string serial_path_;
+    std::string command_topic_;
+    std::string joint_state_topic_;
+    std::string input_unit_;
+    std::string pid_gain_config_path_;
 
-  std::string serial_path_;
-  std::string command_topic_;
-  std::string joint_state_topic_;
-  std::string input_unit_;
-  std::string pid_gain_config_path_;
+    bool direction[4];
+    bool pid;
+    bool stop_mode_;
 
-  bool direction[4];
-  bool pid;
-  bool stop_mode_;
+    float kp[4];
+    float ki[4];
+    float kd[4];
 
-  float kp[4];
-  float ki[4];
-  float kd[4];
+    double  max_rps_;
+    int64_t timeout_ms_;
+    int64_t command_frame_id_;
+    int64_t feedback_frame_id_;
 
-  double max_rps_;
-  int64_t timeout_ms_;
-  int64_t command_frame_id_;
-  int64_t feedback_frame_id_;
+    std::vector<std::string> wheel_names_;
 
-  std::vector<std::string> wheel_names_;
+    LinuxHardwareSerial *dev_{nullptr};
+    SerialBridge        *serial_{nullptr};
 
-  LinuxHardwareSerial * dev_{nullptr};
-  SerialBridge * serial_{nullptr};
+    sb::Message<MotorCommandPacket>  command_msg_;
+    sb::Message<MotorFeedbackPacket> feedback_msg_;
 
-  sb::Message<MotorCommandPacket> command_msg_;
-  sb::Message<MotorFeedbackPacket> feedback_msg_;
+    double last_position_rad_[4]{};
 
-  double last_position_rad_[4]{};
+    rclcpp::Time last_command_time_;
+    rclcpp::Time last_feedback_time_;
 
-  rclcpp::Time last_command_time_;
-  rclcpp::Time last_feedback_time_;
-
-  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr command_sub_;
-  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
-  std::vector<rclcpp::Publisher<debug_msgs::msg::Feedback>::SharedPtr> feedback_pubs_;
-  rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr        command_sub_;
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr           joint_state_pub_;
+    std::vector<rclcpp::Publisher<debug_msgs::msg::Feedback>::SharedPtr> feedback_pubs_;
+    rclcpp::TimerBase::SharedPtr                                         timer_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
+int main (int argc, char **argv) {
+    rclcpp::init (argc, argv);
 
-  try {
-    rclcpp::spin(std::make_shared<SerialMotorBridge>());
-  } catch (const std::exception & e) {
-    std::cerr << "serial_motor_bridge error: " << e.what() << std::endl;
-  }
+    try {
+        rclcpp::spin (std::make_shared<SerialMotorBridge> ());
+    } catch (const std::exception &e) {
+        std::cerr << "serial_motor_bridge error: " << e.what () << std::endl;
+    }
 
-  rclcpp::shutdown();
-  return 0;
+    rclcpp::shutdown ();
+    return 0;
 }

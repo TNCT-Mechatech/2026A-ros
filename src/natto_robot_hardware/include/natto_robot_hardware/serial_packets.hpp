@@ -7,9 +7,9 @@ struct MotorCommand {
     float kp;
     float ki;
     float kd;
-    bool set_direction;
-    bool pid_state;
-    bool stop_mode;
+    bool  set_direction;
+    bool  pid_state;
+    bool  stop_mode;
 };
 
 struct MotorFeedback {

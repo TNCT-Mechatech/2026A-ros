@@ -24,8 +24,8 @@ using namespace std::literals::chrono_literals;
 class ParamCheck : public rclcpp::Node {
    public:
     ParamCheck () : Node ("param_check") {
-        serial_path_   = declare_parameter<std::string> ("serial_path", "/dev/ttyACM0");
-        vrft_csv_path_ = declare_parameter<std::string> ("vrft_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker.csv");
+        serial_path_          = declare_parameter<std::string> ("serial_path", "/dev/ttyACM0");
+        vrft_csv_path_        = declare_parameter<std::string> ("vrft_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker.csv");
         pid_gain_output_path_ = declare_parameter<std::string> ("gain_output_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
 
         stop_mode_ = declare_parameter<bool> ("stop_mode", false);
@@ -173,9 +173,9 @@ class ParamCheck : public rclcpp::Node {
 
     void set_mecanum_target (float x, float y, float turn) {
         std::array<float, 4> raw = {
-            -1*(y + x + turn),
+            -1 * (y + x + turn),
             y - x - turn,
-            -1*(y - x + turn),
+            -1 * (y - x + turn),
             y + x - turn,
         };
 
@@ -188,7 +188,7 @@ class ParamCheck : public rclcpp::Node {
             if (pid_state_[i]) {
                 target_wheel_rps_[i] = raw[i] / max_abs * static_cast<float> (max_wheel_rps_);
             } else {
-                target_wheel_rps_[i] = raw[i];  //送信先でコンペア
+                target_wheel_rps_[i] = raw[i];  // 送信先でコンペア
             }
             // if (i != 0) target_wheel_rps_[i] = 0.0f;  // 0のみでテスト
         }
@@ -275,15 +275,15 @@ class ParamCheck : public rclcpp::Node {
 
         for (size_t i = 0; i < vrft_.size (); i++) {
             const auto gain = vrft_[i].getPID ();
-            gains[i] = gain;
+            gains[i]        = gain;
 
             debug_msgs::msg::PidGain msg;
-            msg.kp = gain[0];
-            msg.ki = gain[1];
-            msg.kd = gain[2];
-            config["wheel"+std::to_string(i)]["kp"] = gain[0];
-            config["wheel"+std::to_string(i)]["ki"] = gain[1];
-            config["wheel"+std::to_string(i)]["kd"] = gain[2];
+            msg.kp                                     = gain[0];
+            msg.ki                                     = gain[1];
+            msg.kd                                     = gain[2];
+            config["wheel" + std::to_string (i)]["kp"] = gain[0];
+            config["wheel" + std::to_string (i)]["ki"] = gain[1];
+            config["wheel" + std::to_string (i)]["kd"] = gain[2];
             printf ("msg.kp = %.6f\n", gain[0]);
             printf ("msg.ki = %.6f\n", gain[1]);
             printf ("msg.kd = %.6f\n", gain[2]);
@@ -297,7 +297,7 @@ class ParamCheck : public rclcpp::Node {
                 RCLCPP_INFO (get_logger (), "wheel%zu: PID=(%.6f, %.6f, %.6f)", i, gain[0], gain[1], gain[2]);
             }
         }
-        std::ofstream fout(pid_gain_output_path_);
+        std::ofstream fout (pid_gain_output_path_);
         fout << config;
 
         write_vrft_csv (gains);
@@ -339,9 +339,9 @@ class ParamCheck : public rclcpp::Node {
             const auto samples = vrft_[wheel].diagnosticSamples ();
 
             for (const auto &sample : samples) {
-                const size_t index = static_cast<size_t> (sample.index);
+                const size_t index       = static_cast<size_t> (sample.index);
                 const double elapsed_sec = index < vrft_sample_times_[wheel].size () ? vrft_sample_times_[wheel][index] : sample.time;
-                const float target_rps = index < vrft_target_rps_samples_[wheel].size () ? vrft_target_rps_samples_[wheel][index] : 0.0f;
+                const float  target_rps  = index < vrft_target_rps_samples_[wheel].size () ? vrft_target_rps_samples_[wheel][index] : 0.0f;
 
                 csv << wheel << ",";
                 csv << sample.index << ",";
