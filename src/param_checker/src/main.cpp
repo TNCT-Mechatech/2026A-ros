@@ -24,9 +24,10 @@ using namespace std::literals::chrono_literals;
 class ParamCheck : public rclcpp::Node {
    public:
     ParamCheck () : Node ("param_check") {
-        serial_path_          = declare_parameter<std::string> ("serial_path", "/dev/ttyACM0");
-        vrft_csv_path_        = declare_parameter<std::string> ("vrft_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker.csv");
-        pid_gain_output_path_ = declare_parameter<std::string> ("gain_output_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
+        serial_path_                = declare_parameter<std::string> ("serial_path", "/dev/ttyACM0");
+        vrft_csv_path_              = declare_parameter<std::string> ("vrft_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker.csv");
+        serial_diagnostic_csv_path_ = declare_parameter<std::string> ("serial_diagnostic_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker_serial.csv");
+        pid_gain_output_path_       = declare_parameter<std::string> ("gain_output_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
 
         stop_mode_ = declare_parameter<bool> ("stop_mode", false);
 
@@ -93,6 +94,18 @@ class ParamCheck : public rclcpp::Node {
         Finished,
     };
 
+    struct SerialDiagnosticSample {
+        size_t timer_index;
+        double elapsed_sec;
+        double timer_dt_sec;
+        double update_duration_sec;
+        int    update_result;
+        bool   feedback_updated;
+        size_t command_write_count;
+        size_t command_writes_since_last_tick;
+        int    last_command_write_result;
+    };
+
     void start_measurement () {
         reset_vrft_samples ();
         apply_initial_gain ();
@@ -104,6 +117,9 @@ class ParamCheck : public rclcpp::Node {
         if (!vrft_csv_path_.empty ()) {
             RCLCPP_INFO (get_logger (), "VRFT CSV output path: %s", vrft_csv_path_.c_str ());
         }
+        if (!serial_diagnostic_csv_path_.empty ()) {
+            RCLCPP_INFO (get_logger (), "Serial diagnostic CSV output path: %s", serial_diagnostic_csv_path_.c_str ());
+        }
         publish_countdown ();
     }
 
@@ -113,6 +129,14 @@ class ParamCheck : public rclcpp::Node {
             vrft_sample_times_[i].clear ();
             vrft_target_rps_samples_[i].clear ();
         }
+
+        serial_diagnostic_samples_.clear ();
+        timer_sample_index_                = 0;
+        previous_timer_elapsed_sec_        = 0.0;
+        has_previous_timer_sample_         = false;
+        command_write_count_               = 0;
+        last_recorded_command_write_count_ = 0;
+        last_command_write_result_         = 0;
     }
 
     void apply_initial_gain () {
@@ -127,7 +151,8 @@ class ParamCheck : public rclcpp::Node {
         }
 
         if (serial_ != nullptr) {
-            serial_->write (command_frame_id_);
+            last_command_write_result_ = serial_->write (command_frame_id_);
+            command_write_count_++;
         }
     }
 
@@ -141,7 +166,8 @@ class ParamCheck : public rclcpp::Node {
         }
 
         if (serial_ != nullptr) {
-            serial_->write (command_frame_id_);
+            last_command_write_result_ = serial_->write (command_frame_id_);
+            command_write_count_++;
         }
     }
 
@@ -190,7 +216,8 @@ class ParamCheck : public rclcpp::Node {
             } else {
                 target_wheel_rps_[i] = raw[i];  // 送信先でコンペア
             }
-            // if (i != 0) target_wheel_rps_[i] = 0.0f;  // 0のみでテスト
+            // if (i != 1) target_wheel_rps_[i] = 0.0f;  // 1のみでテスト
+            // if (i == 1) target_wheel_rps_[i] = 0.0f;
         }
     }
 
@@ -199,9 +226,16 @@ class ParamCheck : public rclcpp::Node {
             return;
         }
 
-        serial_->update ();
+        const auto callback_start   = now ();
+        const int  update_result    = serial_->update ();
+        const auto update_end       = now ();
+        const bool feedback_updated = feedback_msg_.was_updated ();
 
-        if (feedback_msg_.was_updated ()) {
+        if (phase_ == Phase::Measure) {
+            record_serial_diagnostic (callback_start, update_end, update_result, feedback_updated);
+        }
+
+        if (feedback_updated) {
             publish_feedback ();
 
             if (phase_ == Phase::Measure) {
@@ -215,6 +249,44 @@ class ParamCheck : public rclcpp::Node {
             if ((now () - phase_start_time_).seconds () >= measurement_seconds_) {
                 finish_diagnosis ();
             }
+        }
+    }
+
+    void record_serial_diagnostic (const rclcpp::Time &callback_start, const rclcpp::Time &update_end, int update_result, bool feedback_updated) {
+        const double elapsed_sec                    = (callback_start - phase_start_time_).seconds ();
+        const double timer_dt_sec                   = has_previous_timer_sample_ ? elapsed_sec - previous_timer_elapsed_sec_ : 0.0;
+        const size_t command_writes_since_last_tick = command_write_count_ - last_recorded_command_write_count_;
+
+        serial_diagnostic_samples_.push_back ({
+            timer_sample_index_,
+            elapsed_sec,
+            timer_dt_sec,
+            (update_end - callback_start).seconds (),
+            update_result,
+            feedback_updated,
+            command_write_count_,
+            command_writes_since_last_tick,
+            last_command_write_result_,
+        });
+
+        timer_sample_index_++;
+        previous_timer_elapsed_sec_        = elapsed_sec;
+        has_previous_timer_sample_         = true;
+        last_recorded_command_write_count_ = command_write_count_;
+    }
+
+    static const char *serial_update_status (int result) {
+        switch (result) {
+            case 0:
+                return "updated";
+            case -1:
+                return "no_complete_packet";
+            case -2:
+                return "invalid_packet";
+            case -3:
+                return "unregistered_frame_id";
+            default:
+                return "unknown";
         }
     }
 
@@ -301,6 +373,7 @@ class ParamCheck : public rclcpp::Node {
         fout << config;
 
         write_vrft_csv (gains);
+        write_serial_diagnostic_csv ();
 
         phase_ = Phase::Finished;
         send_stop ();
@@ -377,8 +450,72 @@ class ParamCheck : public rclcpp::Node {
         RCLCPP_INFO (get_logger (), "VRFT CSV written: %s (%zu rows)", vrft_csv_path_.c_str (), rows);
     }
 
+    void write_serial_diagnostic_csv () {
+        if (serial_diagnostic_csv_path_.empty ()) {
+            RCLCPP_INFO (get_logger (), "Serial diagnostic CSV output disabled because serial_diagnostic_csv_path is empty.");
+            return;
+        }
+
+        std::ofstream csv (serial_diagnostic_csv_path_);
+        if (!csv.is_open ()) {
+            RCLCPP_ERROR (get_logger (), "Failed to open serial diagnostic CSV output: %s", serial_diagnostic_csv_path_.c_str ());
+            return;
+        }
+
+        csv << std::fixed << std::setprecision (6);
+        csv << "timer_index,elapsed_sec,timer_dt_sec,update_duration_sec,serial_update_result,serial_update_status,feedback_updated,command_write_count,command_writes_since_last_tick,last_command_write_result\n";
+
+        size_t updated_count      = 0;
+        size_t feedback_count     = 0;
+        size_t no_packet_count    = 0;
+        size_t invalid_count      = 0;
+        size_t unregistered_count = 0;
+        size_t unknown_count      = 0;
+
+        for (const auto &sample : serial_diagnostic_samples_) {
+            csv << sample.timer_index << ",";
+            csv << sample.elapsed_sec << ",";
+            csv << sample.timer_dt_sec << ",";
+            csv << sample.update_duration_sec << ",";
+            csv << sample.update_result << ",";
+            csv << serial_update_status (sample.update_result) << ",";
+            csv << (sample.feedback_updated ? 1 : 0) << ",";
+            csv << sample.command_write_count << ",";
+            csv << sample.command_writes_since_last_tick << ",";
+            csv << sample.last_command_write_result << "\n";
+
+            feedback_count += sample.feedback_updated ? 1 : 0;
+            switch (sample.update_result) {
+                case 0:
+                    updated_count++;
+                    break;
+                case -1:
+                    no_packet_count++;
+                    break;
+                case -2:
+                    invalid_count++;
+                    break;
+                case -3:
+                    unregistered_count++;
+                    break;
+                default:
+                    unknown_count++;
+                    break;
+            }
+        }
+
+        if (!csv.good ()) {
+            RCLCPP_ERROR (get_logger (), "Failed while writing serial diagnostic CSV output: %s", serial_diagnostic_csv_path_.c_str ());
+            return;
+        }
+
+        RCLCPP_INFO (
+            get_logger (), "Serial diagnostic CSV written: %s (%zu timer ticks, update=%zu, feedback=%zu, no_packet=%zu, invalid=%zu, unregistered=%zu, unknown=%zu)", serial_diagnostic_csv_path_.c_str (), serial_diagnostic_samples_.size (),
+            updated_count, feedback_count, no_packet_count, invalid_count, unregistered_count, unknown_count);
+    }
+
     void open_serial () {
-        dev_    = new LinuxHardwareSerial (serial_path_.c_str (), B115200);
+        dev_    = new LinuxHardwareSerial (serial_path_.c_str (), B230400);
         serial_ = new SerialBridge (dev_);
     }
 
@@ -390,6 +527,7 @@ class ParamCheck : public rclcpp::Node {
 
     std::string serial_path_;
     std::string vrft_csv_path_;
+    std::string serial_diagnostic_csv_path_;
     std::string pid_gain_output_path_;
 
     double initial_kp_;
@@ -402,6 +540,14 @@ class ParamCheck : public rclcpp::Node {
     double joy_deadband_;
 
     std::array<bool, 4> pid_state_{};
+
+    std::vector<SerialDiagnosticSample> serial_diagnostic_samples_;
+    size_t                              timer_sample_index_{0};
+    double                              previous_timer_elapsed_sec_{0.0};
+    bool                                has_previous_timer_sample_{false};
+    size_t                              command_write_count_{0};
+    size_t                              last_recorded_command_write_count_{0};
+    int                                 last_command_write_result_{0};
 
     bool direction[4];
     bool stop_mode_;

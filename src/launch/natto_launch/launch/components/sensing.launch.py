@@ -12,6 +12,10 @@ def launch_setup(context, *args, **kwargs):
     cfg = yaml.safe_load(open(lidar_param_path, "r"))
 
     name = cfg["name"]
+    lidar_merge_mode = LaunchConfiguration("lidar_merge_mode").perform(context)
+    lidar_timeout_seconds = float(
+        LaunchConfiguration("lidar_timeout_seconds").perform(context)
+    )
 
     composable_nodes = []
     if LaunchConfiguration("use_laserscan_convert").perform(context).lower() == "true":
@@ -44,6 +48,8 @@ def launch_setup(context, *args, **kwargs):
                 "frame_id": "base_link",
                 "lidar_topics": [f"/sensing/lidar/pointcloud2/{n}" for n in name],
                 "frequency": float(LaunchConfiguration("merged_lidar_publish_frequency").perform(context)),
+                "mode": lidar_merge_mode,
+                "lidar_timeout_seconds": lidar_timeout_seconds,
             }],
             remappings=[
                 ("merged_pointcloud2", "/sensing/lidar/pointcloud2/merged"),
@@ -93,5 +99,7 @@ def generate_launch_description():
         DeclareLaunchArgument("use_laserscan_convert", default_value="true"),
         DeclareLaunchArgument("use_ransac", default_value="true"),
         DeclareLaunchArgument("merged_lidar_publish_frequency", default_value="40.0"),
+        DeclareLaunchArgument("lidar_merge_mode", default_value="merge"),
+        DeclareLaunchArgument("lidar_timeout_seconds", default_value="0.2"),
         OpaqueFunction(function=launch_setup),
     ])

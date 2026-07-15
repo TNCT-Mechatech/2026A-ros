@@ -41,6 +41,10 @@ class wheel_odometry : public rclcpp::Node {
     std::string base_frame_id_;
     std::string chassis_type_;
     bool        publish_tf_;
+    double      timeout_sec_;
+    bool        joint_states_received_;
+
+    rclcpp::Time last_joint_state_stamp_;
 
     std::vector<std::string> wheel_names_;
     std::vector<std::string> wheel_base_names_;

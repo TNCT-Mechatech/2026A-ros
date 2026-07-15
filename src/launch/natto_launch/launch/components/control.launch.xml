@@ -5,6 +5,7 @@
             <param from="$(var planning_param_path)"/>
             <remap from="occupancy_grid" to="/common/occupancy_grid"/>
             <remap from="goal_pose" to="/goal_pose"/>
+            <remap from="fixed_goal_pose" to="/planning/fixed_goal_pose"/>
             <remap from="current_pose" to="/localization/current_pose"/>
             <remap from="path" to="/planning/path"/>
             <remap from="footprint" to="/common/footprint"/>

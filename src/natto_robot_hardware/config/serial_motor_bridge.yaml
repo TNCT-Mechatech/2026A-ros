@@ -1,6 +1,6 @@
 serial_motor_bridge:
   ros__parameters:
-    # serial_path: "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2"
+    # serial_path: "/dev/serial/by-path/pci-0000:00:14.0-usb-0:2.2:1.2"
 
     command_topic: "/command_joint_states"
     joint_state_topic: "/joint_states"
@@ -11,6 +11,9 @@ serial_motor_bridge:
 
     max_rps: 4.0
     timeout_ms: 300
+    reconnect_interval_ms: 1000
+    feedback_timeout_ms: 200
+    max_feedback_dt_sec: 0.1
 
     command_frame_id: 0
     feedback_frame_id: 1
@@ -20,3 +23,7 @@ serial_motor_bridge:
       - "mecanum_wheel_fr"
       - "mecanum_wheel_rl"
       - "mecanum_wheel_rr"
+
+    # wheel_namesと同じ順番。ROSの指令方向を実機モーターの極性へ変換します。
+    # マイコンへ送信する目標値に適用され、受信値には適用されません。
+    wheel_polarities: [1, -1, 1, -1]

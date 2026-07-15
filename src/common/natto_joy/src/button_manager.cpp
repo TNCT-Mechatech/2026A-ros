@@ -425,6 +425,7 @@ button_manager::button_manager (const rclcpp::NodeOptions &node_options) : Node 
             command_joint_state_msg_.name.push_back (jn);
             command_joint_state_msg_.position.push_back (pos_off);
             command_joint_state_msg_.velocity.push_back (spd_off);
+            command_joint_state_msg_.effort.push_back (0.0);
             joint_priority_by_index.push_back (std::numeric_limits<int>::min ());
             joint_owner_by_index.push_back (-1);
             joint_publish_always_by_index.push_back (pub_alw);
