@@ -167,11 +167,7 @@ void mcl::occupancy_grid_callback (const nav_msgs::msg::OccupancyGrid::SharedPtr
 
 void mcl::pointcloud2_callback (const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     if (likelihood_field_.empty ()) {
-        RCLCPP_WARN_THROTTLE (
-            this->get_logger (),
-            *this->get_clock (),
-            1000,
-            "Likelihood field is not ready.");
+        RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 1000, "Likelihood field is not ready.");
         return;
     }
 
@@ -193,11 +189,7 @@ void mcl::pointcloud2_callback (const sensor_msgs::msg::PointCloud2::SharedPtr m
     }
 
     if (scan_size_ == 0) {
-        RCLCPP_WARN_THROTTLE (
-            this->get_logger (),
-            *this->get_clock (),
-            1000,
-            "Received empty point cloud.");
+        RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 1000, "Received empty point cloud.");
         return;
     }
 
@@ -207,28 +199,20 @@ void mcl::pointcloud2_callback (const sensor_msgs::msg::PointCloud2::SharedPtr m
         total_weight += p.weight;
     }
 
-    if (std::isfinite (total_weight) &&
-        total_weight > 1.0e-12)
-    {
+    if (std::isfinite (total_weight) && total_weight > 1.0e-12) {
         for (auto &p : particles_) {
             p.weight /= total_weight;
         }
 
         resample_particles ();
     } else {
-        const double uniform_weight =
-            1.0 /
-            static_cast<double> (particles_.size ());
+        const double uniform_weight = 1.0 / static_cast<double> (particles_.size ());
 
         for (auto &p : particles_) {
             p.weight = uniform_weight;
         }
 
-        RCLCPP_WARN_THROTTLE (
-            this->get_logger (),
-            *this->get_clock (),
-            1000,
-            "MCL total weight is zero or invalid.");
+        RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 1000, "MCL total weight is zero or invalid.");
     }
 
     geometry_msgs::msg::PoseWithCovariance mean_pose = get_mean_pose ();

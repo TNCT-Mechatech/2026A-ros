@@ -34,8 +34,7 @@ wheel_odometry::wheel_odometry (const rclcpp::NodeOptions &node_options) : Node 
     timeout_sec_   = this->declare_parameter<double> ("timeout_sec", 0.1);
 
     if (timeout_sec_ <= 0.0) {
-        throw std::runtime_error (
-            "timeout_sec must be greater than zero");
+        throw std::runtime_error ("timeout_sec must be greater than zero");
     }
 
     joint_states_received_ = false;
@@ -72,36 +71,24 @@ wheel_odometry::wheel_odometry (const rclcpp::NodeOptions &node_options) : Node 
 }
 
 void wheel_odometry::joint_state_callback (const sensor_msgs::msg::JointState::SharedPtr msg) {
-    rclcpp::Time current_stamp (
-        msg->header.stamp,
-        this->get_clock ()->get_clock_type ());
+    rclcpp::Time current_stamp (msg->header.stamp, this->get_clock ()->get_clock_type ());
 
     if (current_stamp.nanoseconds () == 0) {
-        RCLCPP_WARN_THROTTLE (
-            this->get_logger (),
-            *this->get_clock (),
-            3000,
-            "JointState stamp is zero; using node time.");
+        RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 3000, "JointState stamp is zero; using node time.");
 
         current_stamp = this->now ();
     }
 
     if (!joint_states_received_) {
         last_joint_state_stamp_ = current_stamp;
-        joint_states_received_ = true;
+        joint_states_received_  = true;
         return;
     }
 
-    const double delta_t =
-        (current_stamp - last_joint_state_stamp_).seconds ();
+    const double delta_t = (current_stamp - last_joint_state_stamp_).seconds ();
 
     if (delta_t <= 0.0 || delta_t > timeout_sec_) {
-        RCLCPP_WARN_THROTTLE (
-            this->get_logger (),
-            *this->get_clock (),
-            3000,
-            "JointState timestamp gap detected: %.3f sec",
-            delta_t);
+        RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 3000, "JointState timestamp gap detected: %.3f sec", delta_t);
 
         last_joint_state_stamp_ = current_stamp;
         return;
