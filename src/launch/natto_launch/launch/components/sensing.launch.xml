@@ -3,6 +3,8 @@
         <arg name="use_laserscan_convert" value="$(var use_laserscan_convert)"/>
         <arg name="use_ransac" value="$(var use_ransac)"/>
         <arg name="merged_lidar_publish_frequency" value="$(var merged_lidar_publish_frequency)"/>
+        <arg name="lidar_merge_mode" value="$(var lidar_merge_mode)"/>
+        <arg name="lidar_timeout_seconds" value="$(var lidar_timeout_seconds)"/>
         <arg name="lidar_param_path" value="$(var lidar_param_path)"/>
     </include>
 </launch>

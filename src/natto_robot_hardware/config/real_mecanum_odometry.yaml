@@ -16,6 +16,8 @@ wheel_odometry:
       - "mecanum_wheel_rl_base"
       - "mecanum_wheel_rr_base"
 
+    timeout_sec: 0.1
+
     odom_frame_id: "odom"
     base_frame_id: "base_link"
     publish_tf: true

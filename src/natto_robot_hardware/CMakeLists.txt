@@ -12,6 +12,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(debug_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 set(SERIAL_BRIDGE_DIR ${CMAKE_CURRENT_LIST_DIR}/../../SerialBridge)
@@ -30,6 +31,8 @@ add_executable(serial_motor_bridge
   src/serial_motor_bridge.cpp
 )
 
+target_compile_features(serial_motor_bridge PRIVATE cxx_std_17)
+
 target_include_directories(serial_motor_bridge PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
@@ -41,6 +44,7 @@ ament_target_dependencies(serial_motor_bridge
   sensor_msgs
   std_msgs
   debug_msgs
+  diagnostic_msgs
 )
 
 target_link_libraries(serial_motor_bridge

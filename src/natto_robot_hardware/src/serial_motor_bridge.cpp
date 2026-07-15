@@ -1,19 +1,26 @@
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <LinuxHardwareSerial.hpp>
 #include <Message.hpp>
 #include <SerialBridge.hpp>
+#include <unistd.h>
 
 #include "debug_msgs/msg/feedback.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "diagnostic_msgs/msg/diagnostic_status.hpp"
+#include "diagnostic_msgs/msg/key_value.hpp"
 #include "yaml-cpp/yaml.h"
 
 #include "natto_robot_hardware/serial_packets.hpp"
@@ -28,7 +35,7 @@ public:
   {
     serial_path_ = declare_parameter<std::string>(
       "serial_path",
-      "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.2"
+      "/dev/serial/by-path/pci-0000:00:14.0-usb-0:2.2:1.2"
     );
     command_topic_ = declare_parameter<std::string>("command_topic", "/command_joint_states");
     joint_state_topic_ = declare_parameter<std::string>("joint_state_topic", "/joint_states");
@@ -40,6 +47,7 @@ public:
     input_unit_ = declare_parameter<std::string>("input_unit", "radps");
     max_rps_ = declare_parameter<double>("max_rps", 4.0);
     timeout_ms_ = declare_parameter<int64_t>("timeout_ms", 300);
+    reconnect_interval_ms_ = declare_parameter<int64_t>("reconnect_interval_ms", 1000);
 
     command_frame_id_ = declare_parameter<int64_t>("command_frame_id", 0);
     feedback_frame_id_ = declare_parameter<int64_t>("feedback_frame_id", 1);
@@ -48,17 +56,23 @@ public:
       "mecanum_wheel_fl", "mecanum_wheel_fr", "mecanum_wheel_rl", "mecanum_wheel_rr"
     };
     wheel_names_ = declare_parameter<std::vector<std::string>>("wheel_names", default_names);
+    wheel_polarities_ = declare_parameter<std::vector<int64_t>>(
+      "wheel_polarities", {1, 1, 1, 1});
+
+    if (wheel_polarities_.size() != 4) {
+      throw std::invalid_argument("wheel_polarities must contain exactly 4 values");
+    }
+    for (const int64_t polarity : wheel_polarities_) {
+      if (polarity != 1 && polarity != -1) {
+        throw std::invalid_argument("wheel_polarities values must be either 1 or -1");
+      }
+    }
 
     pid  = declare_parameter<bool>("pid", true);
-
-    open_serial();
 
     for (double & position : last_position_rad_) {
       position = 0.0;
     }
-
-    serial_->add_frame(static_cast<SerialBridge::frame_id>(command_frame_id_), &command_msg_);
-    serial_->add_frame(static_cast<SerialBridge::frame_id>(feedback_frame_id_), &feedback_msg_);
 
     command_sub_ = create_subscription<sensor_msgs::msg::JointState> (
       command_topic_, rclcpp::SensorDataQoS (),
@@ -75,17 +89,23 @@ public:
       );
     }
 
-    timer_ = create_wall_timer(
-      10ms,
-      std::bind(&SerialMotorBridge::timer_callback, this)
-    );
+    diagnostics_pub_ =
+      create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", 10);
+
+    feedback_timeout_ms_ =
+      declare_parameter<int64_t> ("feedback_timeout_ms", 200);
+
+    max_feedback_dt_sec_ =
+      declare_parameter<double> ("max_feedback_dt_sec", 0.1);
+
+    last_feedback_stamp_ = now ();
 
     direction[0] = true;
     direction[1] = true;
     direction[2] = true;
     direction[3] = true;
 
-    YAML::Node config = YAML::LoadFile("/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
+    YAML::Node config = YAML::LoadFile(pid_gain_config_path_);
 
     for(int i=0;i<4;i++)
     {
@@ -96,6 +116,14 @@ public:
 
     last_command_time_ = now();
     last_feedback_time_ = now();
+    last_reconnect_attempt_ = now();
+
+    try_open_serial();
+
+    timer_ = create_wall_timer(
+      10ms,
+      std::bind(&SerialMotorBridge::timer_callback, this)
+    );
 
     RCLCPP_INFO(get_logger(), "serial_motor_bridge started");
     RCLCPP_INFO(get_logger(), "serial_path: %s", serial_path_.c_str());
@@ -108,13 +136,23 @@ public:
   ~SerialMotorBridge() override
   {
     send_stop();
+    close_serial();
+  }
 
-    if (serial_ != nullptr) {
-      serial_->rm_frame(static_cast<SerialBridge::frame_id>(command_frame_id_));
-      serial_->rm_frame(static_cast<SerialBridge::frame_id>(feedback_frame_id_));
+private:
+  void close_serial()
+  {
+    try {
+      if (serial_ != nullptr) {
+        serial_->rm_frame(static_cast<SerialBridge::frame_id>(command_frame_id_));
+        serial_->rm_frame(static_cast<SerialBridge::frame_id>(feedback_frame_id_));
+      }
+    } catch (...) {
     }
 
     delete serial_;
+    serial_ = nullptr;
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdelete-non-virtual-dtor"
@@ -123,13 +161,70 @@ public:
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+    dev_ = nullptr;
+
+    serial_connected_ = false;
   }
 
-private:
-  void open_serial()
+  bool try_open_serial()
   {
-    dev_ = new LinuxHardwareSerial(serial_path_.c_str(), B115200);
-    serial_ = new SerialBridge(dev_);
+    close_serial();
+
+    try {
+      // LinuxHardwareSerial exits the process when open(2) fails, so check first and
+      // turn the normal disconnected state into a recoverable exception.
+      if (access(serial_path_.c_str(), R_OK | W_OK) != 0) {
+        throw std::runtime_error(
+                "serial device is unavailable: " + serial_path_ + ": " + std::strerror(errno));
+      }
+
+      dev_ = new LinuxHardwareSerial(serial_path_.c_str(), B230400);
+      serial_ = new SerialBridge(dev_);
+
+      serial_->add_frame(
+        static_cast<SerialBridge::frame_id>(command_frame_id_), &command_msg_);
+      serial_->add_frame(
+        static_cast<SerialBridge::frame_id>(feedback_frame_id_), &feedback_msg_);
+
+      serial_connected_ = true;
+      feedback_received_ = false;
+      feedback_timeout_latched_ = false;
+
+      RCLCPP_INFO(
+        get_logger(), "Serial connection established: %s", serial_path_.c_str());
+      return true;
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(
+        get_logger(), "Serial connection failed: %s", e.what());
+    } catch (...) {
+      RCLCPP_ERROR(get_logger(), "Serial connection failed with an unknown error");
+    }
+
+    close_serial();
+    return false;
+  }
+
+  bool write_command()
+  {
+    if (!serial_connected_ || serial_ == nullptr) {
+      return false;
+    }
+
+    try {
+      const int result =
+        serial_->write(static_cast<SerialBridge::frame_id>(command_frame_id_));
+      if (result < 0) {
+        throw std::runtime_error(std::string("write failed: ") + std::strerror(errno));
+      }
+      return true;
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(get_logger(), "Serial write failed: %s", e.what());
+    } catch (...) {
+      RCLCPP_ERROR(get_logger(), "Serial write failed with an unknown error");
+    }
+
+    close_serial();
+    return false;
   }
 
   void command_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -181,10 +276,11 @@ private:
       }
 
       rps = std::clamp(rps, -max_rps_, max_rps_);
-      command_msg_.data.mc[i].target_wheel_rps = static_cast<float>(rps) * (i%2 != 0 ? -1 : 1);
+      command_msg_.data.mc[i].target_wheel_rps =
+        static_cast<float>(rps * static_cast<double>(wheel_polarities_[i]));
     }
 
-    serial_->write(static_cast<SerialBridge::frame_id>(command_frame_id_));
+    write_command();
   }
 
   bool get_command_velocity(
@@ -213,41 +309,153 @@ private:
     return false;
   }
 
-  void timer_callback()
+  void timer_callback ()
   {
-    serial_->update();
+    const auto current_time = now ();
 
-    const auto elapsed_ms = (now() - last_command_time_).nanoseconds() / 1000000;
+    if (!serial_connected_) {
+      const auto elapsed_ms =
+        (current_time - last_reconnect_attempt_).nanoseconds () / 1000000;
 
-    if (elapsed_ms > timeout_ms_) {
-      send_stop();
+      if (elapsed_ms >= reconnect_interval_ms_) {
+        last_reconnect_attempt_ = current_time;
+        try_open_serial ();
+      }
+
+      publish_diagnostics ();
+      return;
     }
 
-    if (feedback_msg_.was_updated()) {
-      last_feedback_time_ = now();
-      publish_joint_state();
-      publish_feedback();
+    try {
+      serial_->update ();
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(get_logger(), "Serial update failed: %s", e.what());
+      close_serial ();
+      publish_diagnostics ();
+      return;
+    } catch (...) {
+      RCLCPP_ERROR(get_logger(), "Serial update failed with an unknown error");
+      close_serial ();
+      publish_diagnostics ();
+      return;
     }
+
+    const auto command_elapsed_ms =
+      (current_time - last_command_time_).nanoseconds ()
+      / 1000000;
+
+    if (command_elapsed_ms > timeout_ms_) {
+      send_stop ();
+    }
+
+    if (feedback_msg_.was_updated ()) {
+      double dt = 0.0;
+
+      if (feedback_received_) {
+        dt =
+          (current_time - last_feedback_stamp_).seconds ();
+      }
+
+      last_feedback_stamp_ = current_time;
+      last_feedback_time_ = current_time;
+      feedback_received_ = true;
+      feedback_timeout_latched_ = false;
+
+      publish_joint_state (dt, current_time);
+      publish_feedback ();
+    }
+
+    if (feedback_received_) {
+      const auto feedback_elapsed_ms =
+        (current_time - last_feedback_stamp_).nanoseconds ()
+        / 1000000;
+
+      if (feedback_elapsed_ms > feedback_timeout_ms_) {
+        if (!feedback_timeout_latched_) {
+          RCLCPP_ERROR (
+            get_logger (),
+            "Motor feedback timed out: %ld ms",
+            feedback_elapsed_ms);
+
+          send_stop ();
+          feedback_timeout_latched_ = true;
+        }
+      }
+    }
+
+    publish_diagnostics ();
   }
 
-  void publish_joint_state()
+  void publish_diagnostics ()
+  {
+    diagnostic_msgs::msg::DiagnosticArray array;
+    const auto current_time = now ();
+    array.header.stamp = current_time;
+
+    diagnostic_msgs::msg::DiagnosticStatus status;
+    status.name = "natto_robot_hardware/serial_motor_bridge";
+    status.hardware_id = serial_path_;
+
+    const double command_age =
+      (current_time - last_command_time_).seconds ();
+    const double feedback_age =
+      feedback_received_ ? (current_time - last_feedback_stamp_).seconds () : -1.0;
+
+    if (!serial_connected_) {
+      status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+      status.message = "Serial disconnected";
+    } else if (feedback_timeout_latched_) {
+      status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+      status.message = "Feedback timeout";
+    } else if (command_age > static_cast<double>(timeout_ms_) / 1000.0) {
+      status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      status.message = "Command timeout";
+    } else {
+      status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+      status.message = "OK";
+    }
+
+    auto add_value = [&status](const std::string & key, const std::string & value) {
+        diagnostic_msgs::msg::KeyValue key_value;
+        key_value.key = key;
+        key_value.value = value;
+        status.values.push_back(key_value);
+      };
+
+    add_value("connected", serial_connected_ ? "true" : "false");
+    add_value("command_age_sec", std::to_string(command_age));
+    add_value("feedback_age_sec", std::to_string(feedback_age));
+    add_value("pid_enabled", pid ? "true" : "false");
+
+    array.status.push_back(status);
+    diagnostics_pub_->publish(array);
+  }
+
+  void publish_joint_state(
+    double dt,
+    const rclcpp::Time & stamp)
   {
     sensor_msgs::msg::JointState msg;
 
-    msg.header.stamp = now();
+    msg.header.stamp = stamp;
     msg.name = wheel_names_;
 
     msg.position.resize(4);
     msg.velocity.resize(4);
     msg.effort.resize(4);
 
-    const double dt = 0.01;
+    const bool integrate =
+      std::isfinite(dt) &&
+      dt > 0.0 &&
+      dt <= max_feedback_dt_sec_;
 
     for (size_t i = 0; i < 4; ++i) {
       const double rps = feedback_msg_.data.mfd[i].measured_wheel_rps;
       const double radps = rps * 2.0 * M_PI;
 
-      last_position_rad_[i] += radps * dt;
+      if (integrate) {
+        last_position_rad_[i] += radps * dt;
+      }
 
       msg.position[i] = last_position_rad_[i];
       msg.velocity[i] = radps;
@@ -280,9 +488,7 @@ private:
       command_msg_.data.mc[i].target_wheel_rps = 0.0f;
     }
 
-    if (serial_ != nullptr) {
-      serial_->write(static_cast<SerialBridge::frame_id>(command_frame_id_));
-    }
+    write_command();
   }
 
   std::string serial_path_;
@@ -301,10 +507,19 @@ private:
 
   double max_rps_;
   int64_t timeout_ms_;
+  int64_t reconnect_interval_ms_;
   int64_t command_frame_id_;
   int64_t feedback_frame_id_;
 
+  double max_feedback_dt_sec_;
+  int64_t feedback_timeout_ms_;
+
+  bool feedback_received_{false};
+  bool feedback_timeout_latched_{false};
+  bool serial_connected_{false};
+
   std::vector<std::string> wheel_names_;
+  std::vector<int64_t> wheel_polarities_;
 
   LinuxHardwareSerial * dev_{nullptr};
   SerialBridge * serial_{nullptr};
@@ -316,10 +531,13 @@ private:
 
   rclcpp::Time last_command_time_;
   rclcpp::Time last_feedback_time_;
+  rclcpp::Time last_feedback_stamp_;
+  rclcpp::Time last_reconnect_attempt_;
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr command_sub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   std::vector<rclcpp::Publisher<debug_msgs::msg::Feedback>::SharedPtr> feedback_pubs_;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
