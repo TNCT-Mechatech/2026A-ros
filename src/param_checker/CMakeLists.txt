@@ -11,7 +11,7 @@ find_package(debug_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
-set(SERIAL_BRIDGE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/SerialBridge)
+set(SERIAL_BRIDGE_DIR ${CMAKE_CURRENT_LIST_DIR}/../../SerialBridge)
 
 add_library(serial_bridge STATIC
   ${SERIAL_BRIDGE_DIR}/src/source/SerialBridge.cpp
