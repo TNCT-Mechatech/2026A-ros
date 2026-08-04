@@ -42,20 +42,15 @@ pointcloud2_merger::pointcloud2_merger (const rclcpp::NodeOptions &node_options)
     num_lidars_ = lidar_topics.size ();
     latest_pointclouds_.resize (num_lidars_);
 
-    lidar_timeout_seconds_ =
-        this->declare_parameter<double> (
-            "lidar_timeout_seconds", 0.2);
+    lidar_timeout_seconds_ = this->declare_parameter<double> ("lidar_timeout_seconds", 0.2);
 
     if (lidar_timeout_seconds_ <= 0.0) {
-        throw std::runtime_error (
-            "lidar_timeout_seconds must be positive");
+        throw std::runtime_error ("lidar_timeout_seconds must be positive");
     }
 
-    last_received_times_.resize (
-        num_lidars_, this->now ());
+    last_received_times_.resize (num_lidars_, this->now ());
 
-    lidar_received_.resize (
-        num_lidars_, false);
+    lidar_received_.resize (num_lidars_, false);
 
     for (size_t i = 0; i < num_lidars_; ++i) {
         pointcloud2_subscribers_.push_back (this->create_subscription<sensor_msgs::msg::PointCloud2> (lidar_topics[i], rclcpp::SensorDataQoS (), [this, i] (const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -70,9 +65,9 @@ pointcloud2_merger::pointcloud2_merger (const rclcpp::NodeOptions &node_options)
             }
 
             std::lock_guard<std::mutex> lock (mutex_);
-            latest_pointclouds_[i] = *msg;
+            latest_pointclouds_[i]  = *msg;
             last_received_times_[i] = this->now ();
-            lidar_received_[i] = true;
+            lidar_received_[i]      = true;
         }));
     }
 
@@ -205,15 +200,15 @@ sensor_msgs::msg::PointCloud2 pointcloud2_merger::build_pointcloud2 (const std::
 
 void pointcloud2_merger::publish_pointcloud2 () {
     std::vector<sensor_msgs::msg::PointCloud2> pointclouds;
-    std::vector<rclcpp::Time> last_received_times;
-    std::vector<bool> lidar_received;
+    std::vector<rclcpp::Time>                  last_received_times;
+    std::vector<bool>                          lidar_received;
 
     {
         std::lock_guard<std::mutex> lock (mutex_);
 
-        pointclouds = latest_pointclouds_;
+        pointclouds         = latest_pointclouds_;
         last_received_times = last_received_times_;
-        lidar_received = lidar_received_;
+        lidar_received      = lidar_received_;
     }
 
     auto                              footprint_points_tf = get_transformed_footprint ();
@@ -226,17 +221,10 @@ void pointcloud2_merger::publish_pointcloud2 () {
             continue;
         }
 
-        const double age =
-            (current_time - last_received_times[i]).seconds ();
+        const double age = (current_time - last_received_times[i]).seconds ();
 
         if (age > lidar_timeout_seconds_) {
-            RCLCPP_WARN_THROTTLE (
-                this->get_logger (),
-                *this->get_clock (),
-                1000,
-                "Lidar %zu data is stale: %.3f sec",
-                i,
-                age);
+            RCLCPP_WARN_THROTTLE (this->get_logger (), *this->get_clock (), 1000, "Lidar %zu data is stale: %.3f sec", i, age);
 
             continue;
         }
@@ -245,15 +233,9 @@ void pointcloud2_merger::publish_pointcloud2 () {
             continue;
         }
 
-        auto filtered_points =
-            transform_and_filter_points (
-                pointclouds[i],
-                footprint_points_tf);
+        auto filtered_points = transform_and_filter_points (pointclouds[i], footprint_points_tf);
 
-        merged_points.insert (
-            merged_points.end (),
-            filtered_points.begin (),
-            filtered_points.end ());
+        merged_points.insert (merged_points.end (), filtered_points.begin (), filtered_points.end ());
     }
 
     pointcloud2_publisher_->publish (build_pointcloud2 (merged_points, frame_id_, this->get_clock ()->now ()));
