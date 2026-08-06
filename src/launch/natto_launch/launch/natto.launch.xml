@@ -25,6 +25,7 @@
     <arg name="lidar_param_path" default=""/>
     <arg name="localization_param_path" default=""/>
     <arg name="planning_param_path" default=""/>
+    <arg name="restricted_zones_param_path" default="$(find-pkg-share natto_launch)/config/restricted_zones.yaml"/>
     <arg name="control_param_path" default=""/>
     <arg name="controller_param_path" default=""/>
     <arg name="simulation_param_path" default=""/>

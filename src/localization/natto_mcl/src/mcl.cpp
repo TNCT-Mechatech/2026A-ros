@@ -17,8 +17,16 @@
 #include <cmath>
 
 namespace mcl {
+namespace {
 
-mcl::mcl (const rclcpp::NodeOptions &node_options) : Node ("mcl", node_options), rng_ (std::random_device{}()) {
+rclcpp::NodeOptions explicit_parameter_declaration (rclcpp::NodeOptions options) {
+    options.automatically_declare_parameters_from_overrides (false);
+    return options;
+}
+
+}  // namespace
+
+mcl::mcl (const rclcpp::NodeOptions &node_options) : Node ("mcl", explicit_parameter_declaration (node_options)), rng_ (std::random_device{}()) {
     pose_publisher_                 = this->create_publisher<geometry_msgs::msg::PoseStamped> ("pose", 10);
     particles_publisher_            = this->create_publisher<geometry_msgs::msg::PoseArray> ("particles", 10);
     pose_with_covariance_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped> ("pose_with_covariance", 10);
@@ -62,6 +70,7 @@ mcl::mcl (const rclcpp::NodeOptions &node_options) : Node ("mcl", node_options),
     max_trajectory_length_ = static_cast<size_t> (this->declare_parameter<int> ("max_trajectory_length", 1000));
     reverse_y_             = this->declare_parameter<bool> ("reverse_y", false);
     reverse_y_offset_      = this->declare_parameter<double> ("reverse_y_offset", 0.0);
+    restricted_zones_      = natto_map::load_restricted_zones (*this);
 
     trajectory_msg_.header.frame_id = map_frame_id_;
 
@@ -90,6 +99,10 @@ mcl::mcl (const rclcpp::NodeOptions &node_options) : Node ("mcl", node_options),
     RCLCPP_INFO (this->get_logger (), "max_trajectory_length: %zu", max_trajectory_length_);
     RCLCPP_INFO (this->get_logger (), "reverse_y: %s", reverse_y_ ? "true" : "false");
     RCLCPP_INFO (this->get_logger (), "reverse_y_offset: %f", reverse_y_offset_);
+    RCLCPP_INFO (this->get_logger (), "valid restricted zones: %zu", restricted_zones_.size ());
+    for (const auto &zone : restricted_zones_) {
+        RCLCPP_INFO (this->get_logger (), "restricted zone '%s': vertices=%zu, lidar_ignore=%s, keepout=%s", zone.name.c_str (), zone.vertices.size (), zone.lidar_ignore ? "true" : "false", zone.keepout ? "true" : "false");
+    }
 
     if (reverse_y_) {
         initial_pose_y_ = -initial_pose_y_ + reverse_y_offset_;
@@ -502,6 +515,8 @@ double mcl::compute_laser_likelihood (const particle &p) {
 
         double lx = p.x + (x * cos_theta - y * sin_theta);
         double ly = p.y + (x * sin_theta + y * cos_theta);
+
+        if (!restricted_zones_.empty () && natto_map::point_in_lidar_ignore_zone (restricted_zones_, lx, ly)) continue;
 
         int ix = static_cast<int> ((lx - origin_x_) / resolution_);
         int iy = static_cast<int> ((ly - origin_y_) / resolution_);

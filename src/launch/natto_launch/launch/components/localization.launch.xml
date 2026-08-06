@@ -10,6 +10,7 @@
 
         <composable_node pkg="natto_mcl" plugin="mcl::mcl" name="mcl" namespace="localization/mcl">
             <param from="$(var localization_param_path)"/>
+            <param from="$(var restricted_zones_param_path)"/>
             <remap from="occupancy_grid" to="/common/occupancy_grid"/>
             <remap from="pointcloud2" to="/sensing/lidar/pointcloud2/merged"/>
             <remap from="initial_pose" to="/initialpose"/>

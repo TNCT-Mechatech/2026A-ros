@@ -15,6 +15,7 @@
 #ifndef __ASTAR_PLANNER_HPP__
 #define __ASTAR_PLANNER_HPP__
 
+#include "natto_map/restricted_zone.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
 #include "tf2/utils.hpp"
@@ -54,15 +55,16 @@ class astar_planner : public rclcpp::Node {
     double      grad_alpha_, grad_beta_, grad_gamma_, grad_step_size_;
     double      replan_distance_threshold_m_, replan_distance_threshold_yaw_deg_;
 
-    nav_msgs::msg::OccupancyGrid       raw_map_;
-    nav_msgs::msg::OccupancyGrid       costmap_;
-    nav_msgs::msg::OccupancyGrid       obstacle_costmap_;
-    geometry_msgs::msg::PoseStamped    goal_pose_;
-    geometry_msgs::msg::PoseStamped    previous_goal_pose_;
-    geometry_msgs::msg::PoseStamped    current_pose_;
-    geometry_msgs::msg::PolygonStamped footprint_;
-    nav_msgs::msg::Path                path_;
-    std::vector<int8_t>                footprint_mask_;
+    nav_msgs::msg::OccupancyGrid           raw_map_;
+    nav_msgs::msg::OccupancyGrid           costmap_;
+    nav_msgs::msg::OccupancyGrid           obstacle_costmap_;
+    geometry_msgs::msg::PoseStamped        goal_pose_;
+    geometry_msgs::msg::PoseStamped        previous_goal_pose_;
+    geometry_msgs::msg::PoseStamped        current_pose_;
+    geometry_msgs::msg::PolygonStamped     footprint_;
+    nav_msgs::msg::Path                    path_;
+    std::vector<int8_t>                    footprint_mask_;
+    std::vector<natto_map::RestrictedZone> restricted_zones_;
 
     size_t footprint_mask_w_      = 0;
     size_t footprint_mask_h_      = 0;
@@ -84,6 +86,7 @@ class astar_planner : public rclcpp::Node {
     bool   is_same_goal (const geometry_msgs::msg::PoseStamped &goal1, const geometry_msgs::msg::PoseStamped &goal2, double tolerance = 0.1);
     bool   rectangle_is_collision_free (const size_t cx, const size_t cy, const double yaw);
     bool   rectangle_is_collision_free (const geometry_msgs::msg::Pose &pose);
+    bool   line_is_collision_free (double x0, double y0, double x1, double y1) const;
 
     nav_msgs::msg::Path       linear_astar ();
     nav_msgs::msg::Path       linear_smoother (const nav_msgs::msg::Path &linear_path);

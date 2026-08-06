@@ -30,6 +30,10 @@ natto_mcl パッケージは、モンテカルロ局所化（MCL）アルゴリ�
 | transform_tolerance | double | 0.2 | 変換の許容時間 |
 | max_trajectory_length | int | 1000 | 軌跡の保持の最大数 |
 | use_odom_tf | bool | false | TFからオドメトリを取得する場合はtrue、odometryトピックから取得する場合はfalse |
+| restricted_zone_names | string array | [] | LiDAR無視・進入禁止ゾーン名。詳細は[共通restricted zones仕様](../common/restricted_zones.md)を参照 |
+
+## Restricted zones
+`lidar_ignore=true` のゾーンは、各パーティクルで反射点を `map` 座標へ変換した後の尤度計算だけから除外されます。設定形式と座標規約は[共通restricted zones仕様](../common/restricted_zones.md)を参照してください。
 
 ## パブリッシャー
 | トピック名 | メッセージ型 | 説明 |
