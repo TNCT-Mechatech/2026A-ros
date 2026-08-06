@@ -28,6 +28,7 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "natto_map/restricted_zone.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -66,7 +67,8 @@ class mcl : public rclcpp::Node {
     geometry_msgs::msg::TransformStamped last_map_to_odom_;
     bool                                 last_map_to_odom_valid_ = false;
     nav_msgs::msg::Odometry              last_odometry_, latest_odometry_;
-    std::vector<std::vector<uint8_t>>    likelihood_field_;
+    std::vector<std::vector<uint8_t>>      likelihood_field_;
+    std::vector<natto_map::RestrictedZone> restricted_zones_;
 
     std::vector<float> scan_x_, scan_y_;
     int                scan_size_;
