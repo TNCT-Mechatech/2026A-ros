@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    # ROS 2 Jazzy cannot infer the type of a literal empty YAML sequence.
+    # The loader treats this typed empty-string sentinel exactly as no zones.
+    restricted_zone_names: [""]
