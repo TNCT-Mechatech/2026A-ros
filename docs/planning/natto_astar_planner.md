@@ -22,6 +22,10 @@ x,y,yawの計画を行います
 | grad_gamma | double | 0.0 | 勾配法のガンマパラメーター。増やすともとの経路に従いやすくなる |
 | grad_step_size | double | 0.1 | 勾配法のステップサイズ |
 | replan_distance_threshold | double | 0.2 | 経路再計画の距離しきい値（m）。ロボットが経路からこの距離以上離れると自動的に再計画を実行 |
+| restricted_zone_names | string array | [] | LiDAR無視・進入禁止ゾーン名。詳細は[共通restricted zones仕様](../common/restricted_zones.md)を参照 |
+
+## Restricted zones
+`keepout=true` のゾーンは生地図のコピーへ占有値100で追加され、通常障害物と同じinflation、A*、平滑化、footprint衝突判定、free-space探索に使用されます。設定形式と座標規約は[共通restricted zones仕様](../common/restricted_zones.md)を参照してください。
 
 ## パブリッシャー
 | トピック名 | メッセージ型 | 説明 |
