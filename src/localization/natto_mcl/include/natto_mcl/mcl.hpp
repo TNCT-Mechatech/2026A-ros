@@ -15,6 +15,7 @@
 #ifndef __MCL_HPP__
 #define __MCL_HPP__
 
+#include "natto_map/restricted_zone.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/utils.h"
 #include "tf2_ros/buffer.h"
@@ -28,7 +29,6 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/odometry.hpp"
-#include "natto_map/restricted_zone.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -62,11 +62,11 @@ class mcl : public rclcpp::Node {
     bool        reverse_y_;
     double      reverse_y_offset_;
 
-    std::vector<particle>                particles_;
-    geometry_msgs::msg::Transform        last_odom_to_base_transform_;
-    geometry_msgs::msg::TransformStamped last_map_to_odom_;
-    bool                                 last_map_to_odom_valid_ = false;
-    nav_msgs::msg::Odometry              last_odometry_, latest_odometry_;
+    std::vector<particle>                  particles_;
+    geometry_msgs::msg::Transform          last_odom_to_base_transform_;
+    geometry_msgs::msg::TransformStamped   last_map_to_odom_;
+    bool                                   last_map_to_odom_valid_ = false;
+    nav_msgs::msg::Odometry                last_odometry_, latest_odometry_;
     std::vector<std::vector<uint8_t>>      likelihood_field_;
     std::vector<natto_map::RestrictedZone> restricted_zones_;
 

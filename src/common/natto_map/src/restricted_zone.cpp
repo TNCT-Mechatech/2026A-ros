@@ -144,7 +144,7 @@ std::vector<RestrictedZone> load_restricted_zones (rclcpp::Node &node) {
     std::vector<RestrictedZone> zones;
     std::vector<std::string>    names;
     try {
-        const auto &overrides = node.get_node_parameters_interface ()->get_parameter_overrides ();
+        const auto &overrides  = node.get_node_parameters_interface ()->get_parameter_overrides ();
         const auto  override   = overrides.find ("restricted_zone_names");
         bool        valid_type = true;
         if (override != overrides.end ()) {
@@ -154,9 +154,9 @@ std::vector<RestrictedZone> load_restricted_zones (rclcpp::Node &node) {
                 valid_type = false;
                 RCLCPP_WARN (node.get_logger (), "Invalid restricted_zone_names: expected a string array. Restricted zones are disabled.");
             }
-            node.declare_parameter<std::vector<std::string>> ("restricted_zone_names", names, rcl_interfaces::msg::ParameterDescriptor {}, true);
+            node.declare_parameter<std::vector<std::string>> ("restricted_zone_names", names, rcl_interfaces::msg::ParameterDescriptor{}, true);
         } else {
-            names = node.declare_parameter<std::vector<std::string>> ("restricted_zone_names", std::vector<std::string> {});
+            names = node.declare_parameter<std::vector<std::string>> ("restricted_zone_names", std::vector<std::string>{});
         }
         if (!valid_type) return zones;
     } catch (const std::exception &error) {
@@ -176,7 +176,7 @@ std::vector<RestrictedZone> load_restricted_zones (rclcpp::Node &node) {
         }
         try {
             const std::string prefix       = "restricted_zones." + name + ".";
-            const auto        points       = node.declare_parameter<std::vector<double>> (prefix + "points", std::vector<double> {});
+            const auto        points       = node.declare_parameter<std::vector<double>> (prefix + "points", std::vector<double>{});
             const bool        lidar_ignore = node.declare_parameter<bool> (prefix + "lidar_ignore", false);
             const bool        keepout      = node.declare_parameter<bool> (prefix + "keepout", false);
             RestrictedZone    zone;
@@ -216,7 +216,7 @@ size_t rasterize_keepout_zones (nav_msgs::msg::OccupancyGrid &grid, const std::v
                 const double cell_min_y = origin_y + static_cast<double> (gy) * resolution;
                 const double cell_max_x = cell_min_x + resolution;
                 const double cell_max_y = cell_min_y + resolution;
-                bool occupied = point_in_restricted_zone (zone, cell_min_x + 0.5 * resolution, cell_min_y + 0.5 * resolution);
+                bool         occupied   = point_in_restricted_zone (zone, cell_min_x + 0.5 * resolution, cell_min_y + 0.5 * resolution);
                 if (!occupied) {
                     for (size_t i = 0; i < zone.vertices.size (); ++i) {
                         const Point2d &a = zone.vertices[i];
