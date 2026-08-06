@@ -15,8 +15,16 @@
 #include "natto_astar_planner/astar_planner.hpp"
 
 namespace astar_planner {
+namespace {
 
-astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("astar_planner", node_options) {
+rclcpp::NodeOptions explicit_parameter_declaration (rclcpp::NodeOptions options) {
+    options.automatically_declare_parameters_from_overrides (false);
+    return options;
+}
+
+}  // namespace
+
+astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("astar_planner", explicit_parameter_declaration (node_options)) {
     path_publisher_      = this->create_publisher<nav_msgs::msg::Path> ("path", 10);
     costmap_publisher_   = this->create_publisher<nav_msgs::msg::OccupancyGrid> ("costmap", rclcpp::QoS (rclcpp::KeepLast (1)).transient_local ().reliable ());
     goal_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped> ("fixed_goal_pose", 10);
@@ -38,6 +46,7 @@ astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("
     grad_step_size_                    = this->declare_parameter<double> ("grad_step_size", 0.1);
     replan_distance_threshold_m_       = this->declare_parameter<double> ("replan_distance_threshold_m", 0.2);
     replan_distance_threshold_yaw_deg_ = this->declare_parameter<double> ("replan_distance_threshold_yaw_deg", 30.0);
+    restricted_zones_                   = natto_map::load_restricted_zones (*this);
     tf_buffer_                         = std::make_unique<tf2_ros::Buffer> (this->get_clock ());
     tf_listener_                       = std::make_shared<tf2_ros::TransformListener> (*tf_buffer_);
 
@@ -55,12 +64,16 @@ astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("
     RCLCPP_INFO (this->get_logger (), "grad_step_size: %.2f", grad_step_size_);
     RCLCPP_INFO (this->get_logger (), "replan_distance_threshold_m: %.2f", replan_distance_threshold_m_);
     RCLCPP_INFO (this->get_logger (), "replan_distance_threshold_yaw_deg: %.2f", replan_distance_threshold_yaw_deg_);
+    RCLCPP_INFO (this->get_logger (), "valid restricted zones: %zu", restricted_zones_.size ());
+    for (const auto &zone : restricted_zones_) {
+        RCLCPP_INFO (this->get_logger (), "restricted zone '%s': vertices=%zu, lidar_ignore=%s, keepout=%s", zone.name.c_str (), zone.vertices.size (), zone.lidar_ignore ? "true" : "false", zone.keepout ? "true" : "false");
+    }
 }
 
 void astar_planner::occupancy_grid_callback (const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
     raw_map_ = *msg;
-    create_costmap ();
     create_obstacle_costmap ();
+    create_costmap ();
     create_path ();
     costmap_publisher_->publish (costmap_);
 }
@@ -120,8 +133,8 @@ void astar_planner::footprint_callback (const geometry_msgs::msg::PolygonStamped
     footprint_ = *msg;
     build_footprint_mask ();
     if (!raw_map_.data.empty ()) {
-        create_costmap ();
         create_obstacle_costmap ();
+        create_costmap ();
         create_path ();
     }
 }
@@ -160,62 +173,24 @@ void astar_planner::create_path () {
 void astar_planner::create_obstacle_costmap () {
     if (raw_map_.data.empty ()) return;
     obstacle_costmap_ = raw_map_;
-    return;
-
-    const int width  = static_cast<int> (raw_map_.info.width);
-    const int height = static_cast<int> (raw_map_.info.height);
-
-    if (width == 0 || height == 0) return;
-
-    std::vector<bool> visited (static_cast<size_t> (width * height), false);
-    std::queue<int>   frontier;
-
-    auto enqueue = [&] (int nx, int ny) {
-        if (nx < 0 || nx >= width) return;
-        if (ny < 0 || ny >= height) return;
-        size_t nidx = static_cast<size_t> (ny * width + nx);
-        if (visited[nidx]) return;
-        if (raw_map_.data[nidx] == 100) return;
-        visited[nidx] = true;
-        frontier.push (static_cast<int> (nidx));
-    };
-    for (int x = 0; x < width; ++x) {
-        enqueue (x, 0);
-        enqueue (x, height - 1);
-    }
-    for (int y = 0; y < height; ++y) {
-        enqueue (0, y);
-        enqueue (width - 1, y);
-    }
-    while (!frontier.empty ()) {
-        int idx = frontier.front ();
-        frontier.pop ();
-        obstacle_costmap_.data[static_cast<size_t> (idx)] = 100;
-
-        int cx = idx % width;
-        int cy = idx / width;
-        enqueue (cx + 1, cy);
-        enqueue (cx - 1, cy);
-        enqueue (cx, cy + 1);
-        enqueue (cx, cy - 1);
-    }
+    natto_map::rasterize_keepout_zones (obstacle_costmap_, restricted_zones_);
 }
 
 void astar_planner::create_costmap () {
-    if (raw_map_.data.empty ()) return;
-    const int   width           = static_cast<int> (raw_map_.info.width);
-    const int   height          = static_cast<int> (raw_map_.info.height);
-    const float resolution      = static_cast<float> (raw_map_.info.resolution);
+    if (obstacle_costmap_.data.empty ()) return;
+    const int   width           = static_cast<int> (obstacle_costmap_.info.width);
+    const int   height          = static_cast<int> (obstacle_costmap_.info.height);
+    const float resolution      = static_cast<float> (obstacle_costmap_.info.resolution);
     const float offset_m        = static_cast<float> (xy_offset_);
     const float inflation_m     = static_cast<float> (xy_inflation_);
     const int   max_radius_cell = static_cast<int> (std::ceil ((inflation_m + offset_m) / resolution));
 
-    costmap_ = raw_map_;
+    costmap_ = obstacle_costmap_;
     costmap_.data.assign (static_cast<size_t> (width * height), 0);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            if (raw_map_.data[static_cast<size_t> (y * width + x)] <= 50) continue;
+            if (obstacle_costmap_.data[static_cast<size_t> (y * width + x)] <= 50) continue;
             for (int dy = -max_radius_cell; dy <= max_radius_cell; ++dy) {
                 int ny = y + dy;
                 if (ny < 0 || ny >= height) continue;
@@ -441,6 +416,24 @@ bool astar_planner::rectangle_is_collision_free (const geometry_msgs::msg::Pose 
     return rectangle_is_collision_free (c.first, c.second, yaw);
 }
 
+bool astar_planner::line_is_collision_free (double x0, double y0, double x1, double y1) const {
+    if (costmap_.data.empty () || costmap_.info.resolution <= 0.0) return false;
+    const double resolution = costmap_.info.resolution;
+    const double origin_x   = costmap_.info.origin.position.x;
+    const double origin_y   = costmap_.info.origin.position.y;
+    const int    width      = static_cast<int> (costmap_.info.width);
+    const int    height     = static_cast<int> (costmap_.info.height);
+    const int steps = std::max (1, static_cast<int> (std::ceil (std::hypot (x1 - x0, y1 - y0) / (0.5 * resolution))));
+    for (int i = 0; i <= steps; ++i) {
+        const double ratio = static_cast<double> (i) / static_cast<double> (steps);
+        const int gx = static_cast<int> (std::floor ((x0 + ratio * (x1 - x0) - origin_x) / resolution));
+        const int gy = static_cast<int> (std::floor ((y0 + ratio * (y1 - y0) - origin_y) / resolution));
+        if (gx < 0 || gy < 0 || gx >= width || gy >= height) return false;
+        if (costmap_.data[static_cast<size_t> (gy * width + gx)] == 100) return false;
+    }
+    return true;
+}
+
 nav_msgs::msg::Path astar_planner::linear_astar () {
     nav_msgs::msg::Path path;
     const size_t        width  = static_cast<size_t> (raw_map_.info.width);
@@ -572,11 +565,12 @@ nav_msgs::msg::Path astar_planner::linear_smoother (const nav_msgs::msg::Path &l
             double anchor_y = p.y - linear_path.poses[i].pose.position.y;
             double total_x  = cgx * grad_alpha_ + smooth_x * grad_beta_ + anchor_x * grad_gamma_;
             double total_y  = cgy * grad_alpha_ + smooth_y * grad_beta_ + anchor_y * grad_gamma_;
-            path.poses[i].pose.position.x -= total_x * grad_step_size_;
-            path.poses[i].pose.position.y -= total_y * grad_step_size_;
-
-            geometry_msgs::msg::Pose probe = path.poses[i].pose;
-            probe.orientation              = path.poses[i].pose.orientation;
+            const double candidate_x = p.x - total_x * grad_step_size_;
+            const double candidate_y = p.y - total_y * grad_step_size_;
+            if (line_is_collision_free (p_prev.x, p_prev.y, candidate_x, candidate_y) && line_is_collision_free (candidate_x, candidate_y, p_next.x, p_next.y)) {
+                p.x = candidate_x;
+                p.y = candidate_y;
+            }
         }
     }
     return path;

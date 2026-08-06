@@ -25,6 +25,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "natto_map/restricted_zone.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -62,7 +63,8 @@ class astar_planner : public rclcpp::Node {
     geometry_msgs::msg::PoseStamped    current_pose_;
     geometry_msgs::msg::PolygonStamped footprint_;
     nav_msgs::msg::Path                path_;
-    std::vector<int8_t>                footprint_mask_;
+    std::vector<int8_t>                    footprint_mask_;
+    std::vector<natto_map::RestrictedZone> restricted_zones_;
 
     size_t footprint_mask_w_      = 0;
     size_t footprint_mask_h_      = 0;
@@ -84,6 +86,7 @@ class astar_planner : public rclcpp::Node {
     bool   is_same_goal (const geometry_msgs::msg::PoseStamped &goal1, const geometry_msgs::msg::PoseStamped &goal2, double tolerance = 0.1);
     bool   rectangle_is_collision_free (const size_t cx, const size_t cy, const double yaw);
     bool   rectangle_is_collision_free (const geometry_msgs::msg::Pose &pose);
+    bool   line_is_collision_free (double x0, double y0, double x1, double y1) const;
 
     nav_msgs::msg::Path       linear_astar ();
     nav_msgs::msg::Path       linear_smoother (const nav_msgs::msg::Path &linear_path);
