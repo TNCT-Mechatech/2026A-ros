@@ -20,4 +20,10 @@ rclcpp_components_register_node(${PROJECT_NAME}
     EXECUTABLE map_converter
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_restricted_zone test/test_restricted_zone.cpp)
+  target_link_libraries(test_restricted_zone ${PROJECT_NAME})
+endif()
+
 ament_auto_package(USE_SCOPED_HEADER_INSTALL_DIR)
