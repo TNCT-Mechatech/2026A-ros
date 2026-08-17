@@ -1,5 +1,5 @@
 <launch>
-    <arg name="serial_path" default="/dev/serial/by-path/pci-0000\:00\:14.0-usb-0\:2.2\:1.2"/>
+    <arg name="serial_path" default="/dev/serial/by-path/pci-0000\:00\:14.0-usb-0\:1.2\:1.2"/>
     <arg name="launch_behavior" default="false"/>
     <arg name="launch_sensing" default="false"/>
     <arg name="launch_localization" default="false"/>
@@ -21,6 +21,7 @@
         <arg name="lidar_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/lidar.yaml"/>
         <arg name="control_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/control.yaml"/>
         <arg name="planning_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/planning.yaml"/>
+        <arg name="restricted_zones_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/map/restricted_zones.yaml"/>
         <arg name="localization_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/localization.yaml"/>
         <arg name="controller_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/controller.yaml"/>
         <arg name="state_graph_path" value="$(find-pkg-share natto_nhk2025_sample)/state_graph/sample.md"/>

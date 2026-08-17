@@ -31,13 +31,13 @@ class ParamCheck : public rclcpp::Node {
 
         stop_mode_ = declare_parameter<bool> ("stop_mode", false);
 
-        initial_kp_ = declare_parameter<double> ("initial_kp", 0.0);
-        initial_ki_ = declare_parameter<double> ("initial_ki", 0.0);
+        initial_kp_ = declare_parameter<double> ("initial_kp", 0.001);
+        initial_ki_ = declare_parameter<double> ("initial_ki", 1.8);
         initial_kd_ = declare_parameter<double> ("initial_kd", 0.0);
 
         max_wheel_rps_         = declare_parameter<double> ("max_wheel_rps", 1.5);
-        measurement_seconds_   = declare_parameter<double> ("measurement_seconds", 60.0);
-        response_time_seconds_ = declare_parameter<double> ("response_time_seconds", 0.5);
+        measurement_seconds_   = declare_parameter<double> ("measurement_seconds", 10.0);
+        response_time_seconds_ = declare_parameter<double> ("response_time_seconds", 0.1);
         sample_time_seconds_   = declare_parameter<double> ("sample_time_seconds", 0.01);
         joy_deadband_          = declare_parameter<double> ("joy_deadband", 0.05);
 

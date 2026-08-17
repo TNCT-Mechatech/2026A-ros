@@ -14,6 +14,7 @@
     <arg name="lidar_param_path" default="$(find-pkg-share natto_nhk2025_sample)/config/lidar.yaml"/>
     <arg name="control_param_path" default="$(find-pkg-share natto_nhk2025_sample)/config/control.yaml"/>
     <arg name="planning_param_path" default="$(find-pkg-share natto_nhk2025_sample)/config/planning.yaml"/>
+    <arg name="restricted_zones_param_path" default="$(find-pkg-share natto_nhk2025_sample)/config/map/restricted_zones.yaml"/>
     <arg name="localization_param_path" default="$(find-pkg-share natto_nhk2025_sample)/config/localization.yaml"/>
     <arg name="simulation_param_path" default="$(find-pkg-share natto_nhk2025_sample)/config/chassis/swerve_simulation.yaml"/>
     <arg name="controller_param_path" default="$(find-pkg-share natto_nhk2025_sample)/config/controller.yaml"/>
@@ -22,5 +23,7 @@
 
     <arg name="joint_state_topics" default="['/$(var chassis_type)/command_joint_states', '/controller/joint_states', '/behavior/command_joint_states']"/>
 
-    <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml"/>
+    <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml">
+        <arg name="restricted_zones_param_path" value="$(var restricted_zones_param_path)"/>
+    </include>
 </launch>

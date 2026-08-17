@@ -1,0 +1,86 @@
+<launch>
+    <arg name="serial_path" default="/dev/serial/by-path/pci-0000\:00\:14.0-usb-0\:1.2\:1.2"/>
+    <arg name="launch_behavior" default="true"/>
+    <arg name="launch_sensing" default="true"/>
+    <arg name="launch_localization" default="true"/>
+    <arg name="launch_visualization" default="false"/>
+    <arg name="launch_lakibeam" default="true"/>
+    <arg name="launch_dynamic_auto_control" default="true"/>
+    <arg name="launch_static_auto_control" default="false"/>
+    <arg name="speed_path_directory" default=""/>
+    <arg name="controller_max_xy_speed_m_s" default="0.3"/>
+    <arg name="controller_max_yaw_speed_rad_s" default="1.0"/>
+    <arg name="lakibeam_hostip" default="0.0.0.0"/>
+    <arg name="lakibeam_port_front" default="2368"/>
+    <arg name="lakibeam_port_rear" default="2369"/>
+    <arg name="lakibeam_sensorip_front" default=""/>
+    <arg name="lakibeam_sensorip_rear" default=""/>
+    <arg name="lakibeam_inverted_front" default="false"/>
+    <arg name="lakibeam_inverted_rear" default="false"/>
+    <arg name="lakibeam_angle_offset_front" default="0"/>
+    <arg name="lakibeam_angle_offset_rear" default="0"/>
+    <arg name="lakibeam_scanfreq" default="30"/>
+    <arg name="lakibeam_filter" default="3"/>
+    <arg name="lakibeam_laser_enable" default="true"/>
+    <arg name="lakibeam_scan_range_start" default="45"/>
+    <arg name="lakibeam_scan_range_stop" default="315"/>
+
+    <include file="$(find-pkg-share lakibeam1)/launch/lakibeam1_scan_dual_lidar.launch.py" if="$(var launch_lakibeam)">
+        <arg name="frame_id0" value="lidar_front"/>
+        <arg name="frame_id1" value="lidar_rear"/>
+        <arg name="output_topic0" value="/sensing/lidar/laserscan/front"/>
+        <arg name="output_topic1" value="/sensing/lidar/laserscan/rear"/>
+        <arg name="hostip" value="$(var lakibeam_hostip)"/>
+        <arg name="port0" value="$(var lakibeam_port_front)"/>
+        <arg name="port1" value="$(var lakibeam_port_rear)"/>
+        <arg name="sensorip0" value="$(var lakibeam_sensorip_front)"/>
+        <arg name="sensorip1" value="$(var lakibeam_sensorip_rear)"/>
+        <arg name="inverted0" value="$(var lakibeam_inverted_front)"/>
+        <arg name="inverted1" value="$(var lakibeam_inverted_rear)"/>
+        <arg name="angle_offset0" value="$(var lakibeam_angle_offset_front)"/>
+        <arg name="angle_offset1" value="$(var lakibeam_angle_offset_rear)"/>
+        <arg name="scanfreq" value="$(var lakibeam_scanfreq)"/>
+        <arg name="filter" value="$(var lakibeam_filter)"/>
+        <arg name="laser_enable" value="$(var lakibeam_laser_enable)"/>
+        <arg name="scan_range_start" value="$(var lakibeam_scan_range_start)"/>
+        <arg name="scan_range_stop" value="$(var lakibeam_scan_range_stop)"/>
+    </include>
+
+    <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml">
+        <arg name="chassis_type" value="mecanum"/>
+        <arg name="chassis_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/chassis/mecanum.yaml"/>
+        <arg name="urdf_path" value="$(find-pkg-share natto_nhk2025_sample)/urdf/mecanum_sample.urdf.xacro"/>
+        <arg name="line_segments_path" value="$(find-pkg-share natto_nhk2025_sample)/config/map/line_segments_blue.csv"/>
+        <arg name="circles_path" value="$(find-pkg-share natto_nhk2025_sample)/config/map/circles_blue.csv"/>
+        <arg name="footprint_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/footprint.yaml"/>
+        <arg name="lidar_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/lidar.yaml"/>
+        <arg name="control_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/control.yaml"/>
+        <arg name="planning_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/planning.yaml"/>
+        <arg name="restricted_zones_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/map/restricted_zones_blue.yaml"/>
+        <arg name="localization_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/localization_blue.yaml"/>
+        <arg name="controller_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/controller.yaml"/>
+        <arg name="state_graph_path" value="$(find-pkg-share natto_nhk2025_sample)/state_graph/sample_blue.md"/>
+        <arg name="joint_rule_path" value="$(find-pkg-share natto_nhk2025_sample)/config/joint_rule.yaml"/>
+        <arg name="launch_simulation" value="false"/>
+        <arg name="launch_behavior" value="$(var launch_behavior)"/>
+        <arg name="launch_sensing" value="$(var launch_sensing)"/>
+        <arg name="lidar_merge_mode" value="passthrough"/>
+        <arg name="launch_localization" value="$(var launch_localization)"/>
+        <arg name="launch_visualization" value="$(var launch_visualization)"/>
+        <arg name="launch_dynamic_auto_control" value="$(var launch_dynamic_auto_control)"/>
+        <arg name="launch_static_auto_control" value="$(var launch_static_auto_control)"/>
+        <arg name="speed_path_directory" value="$(var speed_path_directory)"/>
+        <arg name="initial_allow_auto_drive" value="false"/>
+        <arg name="controller_max_xy_speed_m_s" value="$(var controller_max_xy_speed_m_s)"/>
+        <arg name="controller_max_yaw_speed_rad_s" value="$(var controller_max_yaw_speed_rad_s)"/>
+    </include>
+
+    <node
+      pkg="natto_robot_hardware"
+      exec="serial_motor_bridge"
+      name="serial_motor_bridge"
+      output="screen">
+      <param from="$(find-pkg-share natto_robot_hardware)/config/serial_motor_bridge.yaml"/>
+      <param name="serial_path" value="$(var serial_path)"/>
+    </node>
+</launch>
