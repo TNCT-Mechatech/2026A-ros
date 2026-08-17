@@ -15,8 +15,9 @@
 #ifndef NATTO_MAP__RESTRICTED_ZONE_HPP_
 #define NATTO_MAP__RESTRICTED_ZONE_HPP_
 
-#include "nav_msgs/msg/occupancy_grid.hpp"
 #include "rclcpp/rclcpp.hpp"
+
+#include "nav_msgs/msg/occupancy_grid.hpp"
 
 #include <string>
 #include <vector>
@@ -39,11 +40,11 @@ struct RestrictedZone {
     double               max_y;
 };
 
-bool make_restricted_zone (const std::string &name, const std::vector<double> &points, bool lidar_ignore, bool keepout, RestrictedZone &zone, std::string &error);
-bool point_in_restricted_zone (const RestrictedZone &zone, double x, double y);
-bool point_in_lidar_ignore_zone (const std::vector<RestrictedZone> &zones, double x, double y);
+bool                        make_restricted_zone (const std::string &name, const std::vector<double> &points, bool lidar_ignore, bool keepout, RestrictedZone &zone, std::string &error);
+bool                        point_in_restricted_zone (const RestrictedZone &zone, double x, double y);
+bool                        point_in_lidar_ignore_zone (const std::vector<RestrictedZone> &zones, double x, double y);
 std::vector<RestrictedZone> load_restricted_zones (rclcpp::Node &node);
-size_t rasterize_keepout_zones (nav_msgs::msg::OccupancyGrid &grid, const std::vector<RestrictedZone> &zones);
+size_t                      rasterize_keepout_zones (nav_msgs::msg::OccupancyGrid &grid, const std::vector<RestrictedZone> &zones);
 
 }  // namespace natto_map
 

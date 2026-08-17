@@ -46,7 +46,7 @@ astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("
     grad_step_size_                    = this->declare_parameter<double> ("grad_step_size", 0.1);
     replan_distance_threshold_m_       = this->declare_parameter<double> ("replan_distance_threshold_m", 0.2);
     replan_distance_threshold_yaw_deg_ = this->declare_parameter<double> ("replan_distance_threshold_yaw_deg", 30.0);
-    restricted_zones_                   = natto_map::load_restricted_zones (*this);
+    restricted_zones_                  = natto_map::load_restricted_zones (*this);
     tf_buffer_                         = std::make_unique<tf2_ros::Buffer> (this->get_clock ());
     tf_listener_                       = std::make_shared<tf2_ros::TransformListener> (*tf_buffer_);
 
@@ -423,11 +423,11 @@ bool astar_planner::line_is_collision_free (double x0, double y0, double x1, dou
     const double origin_y   = costmap_.info.origin.position.y;
     const int    width      = static_cast<int> (costmap_.info.width);
     const int    height     = static_cast<int> (costmap_.info.height);
-    const int steps = std::max (1, static_cast<int> (std::ceil (std::hypot (x1 - x0, y1 - y0) / (0.5 * resolution))));
+    const int    steps      = std::max (1, static_cast<int> (std::ceil (std::hypot (x1 - x0, y1 - y0) / (0.5 * resolution))));
     for (int i = 0; i <= steps; ++i) {
         const double ratio = static_cast<double> (i) / static_cast<double> (steps);
-        const int gx = static_cast<int> (std::floor ((x0 + ratio * (x1 - x0) - origin_x) / resolution));
-        const int gy = static_cast<int> (std::floor ((y0 + ratio * (y1 - y0) - origin_y) / resolution));
+        const int    gx    = static_cast<int> (std::floor ((x0 + ratio * (x1 - x0) - origin_x) / resolution));
+        const int    gy    = static_cast<int> (std::floor ((y0 + ratio * (y1 - y0) - origin_y) / resolution));
         if (gx < 0 || gy < 0 || gx >= width || gy >= height) return false;
         if (costmap_.data[static_cast<size_t> (gy * width + gx)] == 100) return false;
     }
@@ -555,16 +555,16 @@ nav_msgs::msg::Path astar_planner::linear_smoother (const nav_msgs::msg::Path &l
     const int max_iter = 300;
     for (int iter = 0; iter < max_iter; ++iter) {
         for (size_t i = 1; i + 1 < path.poses.size (); ++i) {
-            auto &p_prev    = path.poses[i - 1].pose.position;
-            auto &p         = path.poses[i].pose.position;
-            auto &p_next    = path.poses[i + 1].pose.position;
-            auto [cgx, cgy] = get_cost_grad (p.x, p.y);
-            double smooth_x = p.x - 0.5 * (p_prev.x + p_next.x);
-            double smooth_y = p.y - 0.5 * (p_prev.y + p_next.y);
-            double anchor_x = p.x - linear_path.poses[i].pose.position.x;
-            double anchor_y = p.y - linear_path.poses[i].pose.position.y;
-            double total_x  = cgx * grad_alpha_ + smooth_x * grad_beta_ + anchor_x * grad_gamma_;
-            double total_y  = cgy * grad_alpha_ + smooth_y * grad_beta_ + anchor_y * grad_gamma_;
+            auto &p_prev             = path.poses[i - 1].pose.position;
+            auto &p                  = path.poses[i].pose.position;
+            auto &p_next             = path.poses[i + 1].pose.position;
+            auto [cgx, cgy]          = get_cost_grad (p.x, p.y);
+            double       smooth_x    = p.x - 0.5 * (p_prev.x + p_next.x);
+            double       smooth_y    = p.y - 0.5 * (p_prev.y + p_next.y);
+            double       anchor_x    = p.x - linear_path.poses[i].pose.position.x;
+            double       anchor_y    = p.y - linear_path.poses[i].pose.position.y;
+            double       total_x     = cgx * grad_alpha_ + smooth_x * grad_beta_ + anchor_x * grad_gamma_;
+            double       total_y     = cgy * grad_alpha_ + smooth_y * grad_beta_ + anchor_y * grad_gamma_;
             const double candidate_x = p.x - total_x * grad_step_size_;
             const double candidate_y = p.y - total_y * grad_step_size_;
             if (line_is_collision_free (p_prev.x, p_prev.y, candidate_x, candidate_y) && line_is_collision_free (candidate_x, candidate_y, p_next.x, p_next.y)) {

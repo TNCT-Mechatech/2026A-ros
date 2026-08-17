@@ -15,6 +15,7 @@
 #ifndef __ASTAR_PLANNER_HPP__
 #define __ASTAR_PLANNER_HPP__
 
+#include "natto_map/restricted_zone.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
 #include "tf2/utils.hpp"
@@ -25,7 +26,6 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/path.hpp"
-#include "natto_map/restricted_zone.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -55,14 +55,14 @@ class astar_planner : public rclcpp::Node {
     double      grad_alpha_, grad_beta_, grad_gamma_, grad_step_size_;
     double      replan_distance_threshold_m_, replan_distance_threshold_yaw_deg_;
 
-    nav_msgs::msg::OccupancyGrid       raw_map_;
-    nav_msgs::msg::OccupancyGrid       costmap_;
-    nav_msgs::msg::OccupancyGrid       obstacle_costmap_;
-    geometry_msgs::msg::PoseStamped    goal_pose_;
-    geometry_msgs::msg::PoseStamped    previous_goal_pose_;
-    geometry_msgs::msg::PoseStamped    current_pose_;
-    geometry_msgs::msg::PolygonStamped footprint_;
-    nav_msgs::msg::Path                path_;
+    nav_msgs::msg::OccupancyGrid           raw_map_;
+    nav_msgs::msg::OccupancyGrid           costmap_;
+    nav_msgs::msg::OccupancyGrid           obstacle_costmap_;
+    geometry_msgs::msg::PoseStamped        goal_pose_;
+    geometry_msgs::msg::PoseStamped        previous_goal_pose_;
+    geometry_msgs::msg::PoseStamped        current_pose_;
+    geometry_msgs::msg::PolygonStamped     footprint_;
+    nav_msgs::msg::Path                    path_;
     std::vector<int8_t>                    footprint_mask_;
     std::vector<natto_map::RestrictedZone> restricted_zones_;
 
