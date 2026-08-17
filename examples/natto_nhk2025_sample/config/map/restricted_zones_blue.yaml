@@ -1,0 +1,87 @@
+/**:
+  ros__parameters:
+    restricted_zone_names:
+      - table_1
+      - table_2
+      - chair
+      - flag
+      - bucket_1
+      - refill_area
+
+    restricted_zones.table_1.points:
+      - 3.81
+      - 7.19
+      - 3.81
+      - 7.90
+      - 3.30
+      - 7.90
+      - 3.30
+      - 7.19
+
+    restricted_zones.table_1.lidar_ignore: true
+    restricted_zones.table_1.keepout: true
+
+    restricted_zones.table_2.points:
+      - 3.81
+      - 1.50
+      - 3.81
+      - 2.21
+      - 3.30
+      - 2.21
+      - 3.30
+      - 1.50
+
+    restricted_zones.table_2.lidar_ignore: true
+    restricted_zones.table_2.keepout: true
+
+    restricted_zones.chair.points:
+      - 4.91
+      - 4.49
+      - 4.91
+      - 4.91
+      - 4.49
+      - 4.91
+      - 4.49
+      - 4.49
+
+    restricted_zones.chair.lidar_ignore: true
+    restricted_zones.chair.keepout: true
+
+    restricted_zones.flag.points:
+      - 2.95
+      - 4.475
+      - 2.95
+      - 4.925
+      - 2.50
+      - 4.925
+      - 2.50
+      - 4.475
+
+    restricted_zones.flag.lidar_ignore: true
+    restricted_zones.flag.keepout: true
+
+    restricted_zones.bucket_1.points:
+      - 0.74
+      - 4.53
+      - 0.74
+      - 4.87
+      - 0.40
+      - 4.87
+      - 0.40
+      - 4.53
+
+    restricted_zones.bucket_1.lidar_ignore: true
+    restricted_zones.bucket_1.keepout: true
+
+    restricted_zones.refill_area.points:
+      - 1.0
+      - 9.675
+      - 1.0
+      - 10.325
+      - 0.55
+      - 10.325
+      - 0.55
+      - 9.675
+
+    restricted_zones.refill_area.lidar_ignore: true
+    restricted_zones.refill_area.keepout: true
