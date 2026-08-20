@@ -50,6 +50,7 @@ class SerialMotorBridge : public rclcpp::Node {
         std::vector<std::string> default_names = {"mecanum_wheel_fl", "mecanum_wheel_fr", "mecanum_wheel_rl", "mecanum_wheel_rr"};
         wheel_names_                           = declare_parameter<std::vector<std::string>> ("wheel_names", default_names);
         wheel_polarities_                      = declare_parameter<std::vector<int64_t>> ("wheel_polarities", {1, 1, 1, 1});
+        encoder_polarities_                    = declare_parameter<std::vector<int64_t>> ("encoder_polarities", {1, 1, 1, 1});
 
         if (wheel_polarities_.size () != 4) {
             throw std::invalid_argument ("wheel_polarities must contain exactly 4 values");
@@ -57,6 +58,16 @@ class SerialMotorBridge : public rclcpp::Node {
         for (const int64_t polarity : wheel_polarities_) {
             if (polarity != 1 && polarity != -1) {
                 throw std::invalid_argument ("wheel_polarities values must be either 1 or -1");
+            }
+        }
+
+        if (encoder_polarities_.size () != 4) {
+            throw std::invalid_argument ("encoder_polarities must contain exactly 4 values");
+        }
+
+        for (const int64_t polarity : encoder_polarities_) {
+            if (polarity != 1 && polarity != -1) {
+                throw std::invalid_argument ("encoder_polarities values must be either 1 or -1");
             }
         }
 
@@ -376,7 +387,7 @@ class SerialMotorBridge : public rclcpp::Node {
         const bool integrate = std::isfinite (dt) && dt > 0.0 && dt <= max_feedback_dt_sec_;
 
         for (size_t i = 0; i < 4; ++i) {
-            const double rps   = feedback_msg_.data.mfd[i].measured_wheel_rps;
+            const double rps   = feedback_msg_.data.mfd[i].measured_wheel_rps * static_cast<double> (encoder_polarities_[i]);
             const double radps = rps * 2.0 * M_PI;
 
             if (integrate) {
@@ -444,6 +455,7 @@ class SerialMotorBridge : public rclcpp::Node {
 
     std::vector<std::string> wheel_names_;
     std::vector<int64_t>     wheel_polarities_;
+    std::vector<int64_t>     encoder_polarities_;
 
     LinuxHardwareSerial *dev_{nullptr};
     SerialBridge        *serial_{nullptr};

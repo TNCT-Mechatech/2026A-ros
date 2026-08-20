@@ -26,4 +26,8 @@ serial_motor_bridge:
 
     # wheel_namesと同じ順番。ROSの指令方向を実機モーターの極性へ変換します。
     # マイコンへ送信する目標値に適用され、受信値には適用されません。
-    wheel_polarities: [1, -1, 1, -1]
+    wheel_polarities: [-1, 1, -1, 1]
+
+    # エンコーダの極性
+    # FL, FR, RL, RR
+    encoder_polarities: [-1, 1, -1, 1]
