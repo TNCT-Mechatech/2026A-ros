@@ -24,7 +24,7 @@ using namespace std::literals::chrono_literals;
 class ParamCheck : public rclcpp::Node {
    public:
     ParamCheck () : Node ("param_check") {
-        serial_path_                = declare_parameter<std::string> ("serial_path", "/dev/ttyACM0");
+        serial_path_                = declare_parameter<std::string> ("serial_path", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:1.2:1.2");
         vrft_csv_path_              = declare_parameter<std::string> ("vrft_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker.csv");
         serial_diagnostic_csv_path_ = declare_parameter<std::string> ("serial_diagnostic_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker_serial.csv");
         pid_gain_output_path_       = declare_parameter<std::string> ("gain_output_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
