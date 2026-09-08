@@ -53,10 +53,12 @@ foreach(node ${node_list})
 endforeach()
 
 ###############
-# Install launch files
-install(DIRECTORY launch/
-  DESTINATION share/${PROJECT_NAME}/launch
-)
+# Install launch files when the package provides any.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/launch")
+  install(DIRECTORY launch/
+    DESTINATION share/${PROJECT_NAME}/launch
+  )
+endif()
 
 ###############
 
