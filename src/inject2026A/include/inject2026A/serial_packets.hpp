@@ -4,11 +4,11 @@
 
 struct MotorCommand {
     float target_wheel_rps;
-    float kp;  //ゼロでok
+    float kp;  // ゼロでok
     float ki;
     float kd;
     bool  set_direction;
-    bool  pid_state;  //falseにする
+    bool  pid_state;  // falseにする
     bool  stop_mode;
 };
 
