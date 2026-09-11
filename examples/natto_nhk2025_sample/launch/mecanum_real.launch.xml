@@ -10,6 +10,11 @@
     <arg name="launch_dynamic_auto_control" default="false"/>
     <arg name="launch_static_auto_control" default="false"/>
     <arg name="speed_path_directory" default=""/>
+    <arg name="motor_command_mode" default="closed_loop_velocity"/>
+    <arg name="motor_pid" default="true"/>
+    <arg name="open_loop_full_scale_rps" default="4.0"/>
+    <arg name="open_loop_output_limit" default="1.0"/>
+    <arg name="open_loop_slew_rate_per_sec" default="1.0"/>
 
     <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml">
         <arg name="chassis_type" value="mecanum"/>
@@ -47,5 +52,10 @@
       output="screen">
       <param from="$(find-pkg-share natto_robot_hardware)/config/serial_motor_bridge.yaml"/>
       <param name="serial_path" value="$(var serial_path)"/>
+      <param name="command_mode" value="$(var motor_command_mode)"/>
+      <param name="pid" value="$(var motor_pid)"/>
+      <param name="open_loop_full_scale_rps" value="$(var open_loop_full_scale_rps)"/>
+      <param name="open_loop_output_limit" value="$(var open_loop_output_limit)"/>
+      <param name="open_loop_slew_rate_per_sec" value="$(var open_loop_slew_rate_per_sec)"/>
     </node>
 </launch>

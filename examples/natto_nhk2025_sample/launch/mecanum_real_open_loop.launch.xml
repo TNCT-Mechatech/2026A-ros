@@ -1,0 +1,26 @@
+<launch>
+    <arg name="serial_path" default="/dev/serial/by-path/pci-0000\:00\:14.0-usb-0\:1.2\:1.2"/>
+    <arg name="open_loop_full_scale_rps" default="4.0"/>
+    <arg name="open_loop_output_limit" default="0.2"/>
+    <arg name="open_loop_slew_rate_per_sec" default="1.0"/>
+
+    <!--
+      エンコーダ故障時の手動退避専用。
+      通常の自動制御launchはclosed_loop_velocity/pid=trueのまま変更しません。
+    -->
+    <include file="$(find-pkg-share natto_nhk2025_sample)/launch/mecanum_real.launch.xml">
+        <arg name="serial_path" value="$(var serial_path)"/>
+        <arg name="launch_behavior" value="false"/>
+        <arg name="launch_sensing" value="false"/>
+        <arg name="launch_localization" value="false"/>
+        <arg name="launch_visualization" value="false"/>
+        <arg name="publish_map" value="false"/>
+        <arg name="launch_dynamic_auto_control" value="false"/>
+        <arg name="launch_static_auto_control" value="false"/>
+        <arg name="motor_command_mode" value="open_loop_normalized"/>
+        <arg name="motor_pid" value="false"/>
+        <arg name="open_loop_full_scale_rps" value="$(var open_loop_full_scale_rps)"/>
+        <arg name="open_loop_output_limit" value="$(var open_loop_output_limit)"/>
+        <arg name="open_loop_slew_rate_per_sec" value="$(var open_loop_slew_rate_per_sec)"/>
+    </include>
+</launch>

@@ -5,11 +5,22 @@ serial_motor_bridge:
     command_topic: "/command_joint_states"
     joint_state_topic: "/joint_states"
 
+    # 通常時は車輪速度を指令する閉ループ制御。エンコーダ故障時だけ
+    # open_loop_normalizedを専用launchから指定します。
+    command_mode: "closed_loop_velocity"
+    pid: true
+
     # ROS側のJointState.velocityはrad/s、シリアル送受信の車輪速度はrps。
     # このbridge内でrad/s -> rpsへ変換してマイコンへ送ります。
     input_unit: "radps"
 
     max_rps: 4.0
+
+    # open_loop_normalized専用。4輪の比率を保ったまま[-1, 1]へ正規化します。
+    open_loop_full_scale_rps: 4.0
+    open_loop_output_limit: 1.0
+    open_loop_slew_rate_per_sec: 1.0
+
     timeout_ms: 300
     reconnect_interval_ms: 1000
     feedback_timeout_ms: 200
