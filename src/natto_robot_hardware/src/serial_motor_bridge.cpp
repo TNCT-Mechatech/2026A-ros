@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -39,10 +40,14 @@ class SerialMotorBridge : public rclcpp::Node {
 
         stop_mode_ = declare_parameter<bool> ("stop_mode", false);
 
-        input_unit_            = declare_parameter<std::string> ("input_unit", "radps");
-        max_rps_               = declare_parameter<double> ("max_rps", 4.0);
-        timeout_ms_            = declare_parameter<int64_t> ("timeout_ms", 300);
-        reconnect_interval_ms_ = declare_parameter<int64_t> ("reconnect_interval_ms", 1000);
+        command_mode_                = declare_parameter<std::string> ("command_mode", "closed_loop_velocity");
+        input_unit_                  = declare_parameter<std::string> ("input_unit", "radps");
+        max_rps_                     = declare_parameter<double> ("max_rps", 4.0);
+        open_loop_full_scale_rps_    = declare_parameter<double> ("open_loop_full_scale_rps", 4.0);
+        open_loop_output_limit_      = declare_parameter<double> ("open_loop_output_limit", 1.0);
+        open_loop_slew_rate_per_sec_ = declare_parameter<double> ("open_loop_slew_rate_per_sec", 1.0);
+        timeout_ms_                  = declare_parameter<int64_t> ("timeout_ms", 300);
+        reconnect_interval_ms_       = declare_parameter<int64_t> ("reconnect_interval_ms", 1000);
 
         command_frame_id_  = declare_parameter<int64_t> ("command_frame_id", 0);
         feedback_frame_id_ = declare_parameter<int64_t> ("feedback_frame_id", 1);
@@ -73,6 +78,31 @@ class SerialMotorBridge : public rclcpp::Node {
 
         pid = declare_parameter<bool> ("pid", true);
 
+        if (command_mode_ != "closed_loop_velocity" && command_mode_ != "open_loop_normalized") {
+            throw std::invalid_argument ("command_mode must be either closed_loop_velocity or open_loop_normalized");
+        }
+        if (command_mode_ == "closed_loop_velocity" && !pid) {
+            throw std::invalid_argument ("closed_loop_velocity requires pid=true");
+        }
+        if (command_mode_ == "open_loop_normalized" && pid) {
+            throw std::invalid_argument ("open_loop_normalized requires pid=false");
+        }
+        if (input_unit_ != "radps" && input_unit_ != "rps") {
+            throw std::invalid_argument ("input_unit must be either radps or rps");
+        }
+        if (!std::isfinite (max_rps_) || max_rps_ <= 0.0) {
+            throw std::invalid_argument ("max_rps must be finite and greater than zero");
+        }
+        if (!std::isfinite (open_loop_full_scale_rps_) || open_loop_full_scale_rps_ <= 0.0) {
+            throw std::invalid_argument ("open_loop_full_scale_rps must be finite and greater than zero");
+        }
+        if (!std::isfinite (open_loop_output_limit_) || open_loop_output_limit_ <= 0.0 || open_loop_output_limit_ > 1.0) {
+            throw std::invalid_argument ("open_loop_output_limit must be finite and in (0, 1]");
+        }
+        if (!std::isfinite (open_loop_slew_rate_per_sec_) || open_loop_slew_rate_per_sec_ <= 0.0) {
+            throw std::invalid_argument ("open_loop_slew_rate_per_sec must be finite and greater than zero");
+        }
+
         for (double &position : last_position_rad_) {
             position = 0.0;
         }
@@ -98,13 +128,21 @@ class SerialMotorBridge : public rclcpp::Node {
         direction[2] = true;
         direction[3] = true;
 
-        YAML::Node config = YAML::LoadFile (pid_gain_config_path_);
+        std::fill (std::begin (kp), std::end (kp), 0.0f);
+        std::fill (std::begin (ki), std::end (ki), 0.0f);
+        std::fill (std::begin (kd), std::end (kd), 0.0f);
 
-        for (int i = 0; i < 4; i++) {
-            kp[i] = config["wheel" + std::to_string (i)]["kp"].as<float> ();
-            ki[i] = config["wheel" + std::to_string (i)]["ki"].as<float> ();
-            kd[i] = config["wheel" + std::to_string (i)]["kd"].as<float> ();
+        if (pid) {
+            YAML::Node config = YAML::LoadFile (pid_gain_config_path_);
+
+            for (int i = 0; i < 4; i++) {
+                kp[i] = config["wheel" + std::to_string (i)]["kp"].as<float> ();
+                ki[i] = config["wheel" + std::to_string (i)]["ki"].as<float> ();
+                kd[i] = config["wheel" + std::to_string (i)]["kd"].as<float> ();
+            }
         }
+
+        initialize_command_packet ();
 
         last_command_time_      = now ();
         last_feedback_time_     = now ();
@@ -119,7 +157,9 @@ class SerialMotorBridge : public rclcpp::Node {
         RCLCPP_INFO (get_logger (), "command_topic: %s", command_topic_.c_str ());
         RCLCPP_INFO (get_logger (), "joint_state_topic: %s", joint_state_topic_.c_str ());
         RCLCPP_INFO (get_logger (), "input_unit: %s", input_unit_.c_str ());
-        RCLCPP_INFO (get_logger (), "serial command/feedback unit: rps");
+        RCLCPP_INFO (get_logger (), "command_mode: %s", command_mode_.c_str ());
+        RCLCPP_INFO (get_logger (), "serial command unit: %s", pid ? "rps" : "normalized output [-1, 1]");
+        RCLCPP_INFO (get_logger (), "serial feedback unit: rps");
     }
 
     ~SerialMotorBridge () override {
@@ -173,6 +213,11 @@ class SerialMotorBridge : public rclcpp::Node {
             feedback_received_        = false;
             feedback_timeout_latched_ = false;
 
+            set_zero_command ();
+            if (!write_command ()) {
+                throw std::runtime_error ("failed to send the initial zero command");
+            }
+
             RCLCPP_INFO (get_logger (), "Serial connection established: %s", serial_path_.c_str ());
             return true;
         } catch (const std::exception &e) {
@@ -206,21 +251,32 @@ class SerialMotorBridge : public rclcpp::Node {
         return false;
     }
 
-    void command_callback (const sensor_msgs::msg::JointState::SharedPtr msg) {
-        last_command_time_ = now ();
-
-        for (int i = 0; i < 4; i++) {
-            command_msg_.data.mc[i].kp = kp[i];
-            command_msg_.data.mc[i].ki = ki[i];
-            command_msg_.data.mc[i].kd = 0.0f;
-        }
-
+    void initialize_command_packet () {
         for (size_t i = 0; i < 4; ++i) {
             command_msg_.data.mc[i].target_wheel_rps = 0.0f;
+            command_msg_.data.mc[i].kp               = pid ? kp[i] : 0.0f;
+            command_msg_.data.mc[i].ki               = pid ? ki[i] : 0.0f;
+            command_msg_.data.mc[i].kd               = 0.0f;
             command_msg_.data.mc[i].set_direction    = direction[i];
             command_msg_.data.mc[i].pid_state        = pid;
             command_msg_.data.mc[i].stop_mode        = stop_mode_;
         }
+        last_open_loop_outputs_.fill (0.0);
+    }
+
+    void set_zero_command () {
+        for (size_t i = 0; i < 4; ++i) {
+            command_msg_.data.mc[i].target_wheel_rps = 0.0f;
+        }
+        last_open_loop_outputs_.fill (0.0);
+    }
+
+    void command_callback (const sensor_msgs::msg::JointState::SharedPtr msg) {
+        const auto command_time = now ();
+        const auto command_dt   = std::clamp ((command_time - last_command_time_).seconds (), 0.0, 0.1);
+        last_command_time_      = command_time;
+
+        std::array<double, 4> wheel_rps{};
 
         for (size_t i = 0; i < std::min<size_t> (4, wheel_names_.size ()); ++i) {
             double velocity = 0.0;
@@ -229,19 +285,46 @@ class SerialMotorBridge : public rclcpp::Node {
                 continue;
             }
 
-            double rps = 0.0;
-            if (input_unit_ == "radps") {
-                rps = velocity / (2.0 * M_PI);
-            } else if (input_unit_ == "rps") {
-                rps = velocity;
-            } else {
-                RCLCPP_ERROR_THROTTLE (get_logger (), *get_clock (), 1000, "invalid input_unit: %s", input_unit_.c_str ());
+            if (!std::isfinite (velocity)) {
+                RCLCPP_ERROR_THROTTLE (get_logger (), *get_clock (), 1000, "non-finite command velocity for %s", wheel_names_[i].c_str ());
                 send_stop ();
                 return;
             }
 
-            rps                                      = std::clamp (rps, -max_rps_, max_rps_);
-            command_msg_.data.mc[i].target_wheel_rps = static_cast<float> (rps * static_cast<double> (wheel_polarities_[i]));
+            wheel_rps[i] = input_unit_ == "radps" ? velocity / (2.0 * M_PI) : velocity;
+        }
+
+        if (command_mode_ == "closed_loop_velocity") {
+            for (size_t i = 0; i < 4; ++i) {
+                const double rps                         = std::clamp (wheel_rps[i], -max_rps_, max_rps_);
+                command_msg_.data.mc[i].target_wheel_rps = static_cast<float> (rps * static_cast<double> (wheel_polarities_[i]));
+            }
+        } else {
+            double largest_abs_rps = 0.0;
+            for (const double rps : wheel_rps) {
+                largest_abs_rps = std::max (largest_abs_rps, std::abs (rps));
+            }
+
+            const double normalization_scale = std::max (open_loop_full_scale_rps_, largest_abs_rps);
+            const double max_delta           = open_loop_slew_rate_per_sec_ * command_dt;
+
+            std::array<double, 4> desired_outputs{};
+            double                largest_output_change = 0.0;
+            for (size_t i = 0; i < 4; ++i) {
+                desired_outputs[i]    = open_loop_output_limit_ * wheel_rps[i] / normalization_scale * static_cast<double> (wheel_polarities_[i]);
+                largest_output_change = std::max (largest_output_change, std::abs (desired_outputs[i] - last_open_loop_outputs_[i]));
+            }
+
+            double slew_scale = 1.0;
+            if (largest_output_change > max_delta && largest_output_change > 0.0) {
+                slew_scale = max_delta / largest_output_change;
+            }
+
+            for (size_t i = 0; i < 4; ++i) {
+                const double output                      = last_open_loop_outputs_[i] + (desired_outputs[i] - last_open_loop_outputs_[i]) * slew_scale;
+                last_open_loop_outputs_[i]               = std::clamp (output, -1.0, 1.0);
+                command_msg_.data.mc[i].target_wheel_rps = static_cast<float> (last_open_loop_outputs_[i]);
+            }
         }
 
         write_command ();
@@ -369,6 +452,13 @@ class SerialMotorBridge : public rclcpp::Node {
         add_value ("command_age_sec", std::to_string (command_age));
         add_value ("feedback_age_sec", std::to_string (feedback_age));
         add_value ("pid_enabled", pid ? "true" : "false");
+        add_value ("command_mode", command_mode_);
+        if (command_mode_ == "open_loop_normalized") {
+            add_value ("open_loop_output_limit", std::to_string (open_loop_output_limit_));
+            for (size_t i = 0; i < 4; ++i) {
+                add_value ("open_loop_command_" + std::to_string (i), std::to_string (command_msg_.data.mc[i].target_wheel_rps));
+            }
+        }
 
         array.status.push_back (status);
         diagnostics_pub_->publish (array);
@@ -419,15 +509,13 @@ class SerialMotorBridge : public rclcpp::Node {
     }
 
     void send_stop () {
-        for (size_t i = 0; i < 4; ++i) {
-            command_msg_.data.mc[i].target_wheel_rps = 0.0f;
-        }
-
+        set_zero_command ();
         write_command ();
     }
 
     std::string serial_path_;
     std::string command_topic_;
+    std::string command_mode_;
     std::string joint_state_topic_;
     std::string input_unit_;
     std::string pid_gain_config_path_;
@@ -440,6 +528,9 @@ class SerialMotorBridge : public rclcpp::Node {
     float ki[4];
     float kd[4];
 
+    double  open_loop_full_scale_rps_;
+    double  open_loop_output_limit_;
+    double  open_loop_slew_rate_per_sec_;
     double  max_rps_;
     int64_t timeout_ms_;
     int64_t reconnect_interval_ms_;
@@ -463,7 +554,8 @@ class SerialMotorBridge : public rclcpp::Node {
     sb::Message<MotorCommandPacket>  command_msg_;
     sb::Message<MotorFeedbackPacket> feedback_msg_;
 
-    double last_position_rad_[4]{};
+    std::array<double, 4> last_open_loop_outputs_{};
+    double                last_position_rad_[4]{};
 
     rclcpp::Time last_command_time_;
     rclcpp::Time last_feedback_time_;

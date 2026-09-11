@@ -86,16 +86,13 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
     con.data.mc[0].target_wheel_rps = (up * 0.4 - down * 0.2);
 
     // 雑巾送り出し
-    con.data.mc[1].target_wheel_rps = (cross - circle) * 0.2;
+    con.data.mc[1].target_wheel_rps = (cross - circle) * 0.4;
 
     // 雑巾ラック
     con.data.mc[2].target_wheel_rps = (square - triangle) * 0.2;
 
-    // 発射装置①
-    con.data.mc[3].target_wheel_rps = l2;
-
-    // 発射装置②
-    // con.data.mc[4].target_wheel_rps = r2;
+    // 未使用
+    con.data.mc[3].target_wheel_rps = 0;
 
     const int write_result = serial->write (0);
 

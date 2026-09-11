@@ -37,7 +37,7 @@ class ParamCheck : public rclcpp::Node {
 
         max_wheel_rps_         = declare_parameter<double> ("max_wheel_rps", 1.5);
         measurement_seconds_   = declare_parameter<double> ("measurement_seconds", 10.0);
-        response_time_seconds_ = declare_parameter<double> ("response_time_seconds", 0.1);
+        response_time_seconds_ = declare_parameter<double> ("response_time_seconds", 0.3);
         sample_time_seconds_   = declare_parameter<double> ("sample_time_seconds", 0.01);
         joy_deadband_          = declare_parameter<double> ("joy_deadband", 0.05);
 

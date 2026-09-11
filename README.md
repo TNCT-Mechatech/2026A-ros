@@ -312,6 +312,16 @@ ros2 launch natto_nhk2025_sample mecanum_sample.launch.xml
 ros2 launch natto_nhk2025_sample mecanum_real.launch.xml
 ```
 
+エンコーダ故障時の手動退避（PID無効、モーター指令は正規化値）：
+
+```bash
+ros2 launch natto_nhk2025_sample mecanum_real_open_loop.launch.xml
+```
+
+既定では最大出力を `0.2` に制限します。必要な場合は
+`open_loop_output_limit:=0.5` のように指定し、`0より大きく1以下` の範囲で変更できます。
+自動走行、自己位置推定、センシングはこのlaunchでは起動しません。
+
 自動走行：
 
 ```bash
