@@ -40,14 +40,14 @@ class SerialMotorBridge : public rclcpp::Node {
 
         stop_mode_ = declare_parameter<bool> ("stop_mode", false);
 
-        command_mode_                   = declare_parameter<std::string> ("command_mode", "closed_loop_velocity");
-        input_unit_                      = declare_parameter<std::string> ("input_unit", "radps");
-        max_rps_                         = declare_parameter<double> ("max_rps", 4.0);
-        open_loop_full_scale_rps_        = declare_parameter<double> ("open_loop_full_scale_rps", 4.0);
-        open_loop_output_limit_          = declare_parameter<double> ("open_loop_output_limit", 1.0);
-        open_loop_slew_rate_per_sec_     = declare_parameter<double> ("open_loop_slew_rate_per_sec", 1.0);
-        timeout_ms_            = declare_parameter<int64_t> ("timeout_ms", 300);
-        reconnect_interval_ms_ = declare_parameter<int64_t> ("reconnect_interval_ms", 1000);
+        command_mode_                = declare_parameter<std::string> ("command_mode", "closed_loop_velocity");
+        input_unit_                  = declare_parameter<std::string> ("input_unit", "radps");
+        max_rps_                     = declare_parameter<double> ("max_rps", 4.0);
+        open_loop_full_scale_rps_    = declare_parameter<double> ("open_loop_full_scale_rps", 4.0);
+        open_loop_output_limit_      = declare_parameter<double> ("open_loop_output_limit", 1.0);
+        open_loop_slew_rate_per_sec_ = declare_parameter<double> ("open_loop_slew_rate_per_sec", 1.0);
+        timeout_ms_                  = declare_parameter<int64_t> ("timeout_ms", 300);
+        reconnect_interval_ms_       = declare_parameter<int64_t> ("reconnect_interval_ms", 1000);
 
         command_frame_id_  = declare_parameter<int64_t> ("command_frame_id", 0);
         feedback_frame_id_ = declare_parameter<int64_t> ("feedback_frame_id", 1);
@@ -296,7 +296,7 @@ class SerialMotorBridge : public rclcpp::Node {
 
         if (command_mode_ == "closed_loop_velocity") {
             for (size_t i = 0; i < 4; ++i) {
-                const double rps = std::clamp (wheel_rps[i], -max_rps_, max_rps_);
+                const double rps                         = std::clamp (wheel_rps[i], -max_rps_, max_rps_);
                 command_msg_.data.mc[i].target_wheel_rps = static_cast<float> (rps * static_cast<double> (wheel_polarities_[i]));
             }
         } else {
@@ -311,7 +311,7 @@ class SerialMotorBridge : public rclcpp::Node {
             std::array<double, 4> desired_outputs{};
             double                largest_output_change = 0.0;
             for (size_t i = 0; i < 4; ++i) {
-                desired_outputs[i] = open_loop_output_limit_ * wheel_rps[i] / normalization_scale * static_cast<double> (wheel_polarities_[i]);
+                desired_outputs[i]    = open_loop_output_limit_ * wheel_rps[i] / normalization_scale * static_cast<double> (wheel_polarities_[i]);
                 largest_output_change = std::max (largest_output_change, std::abs (desired_outputs[i] - last_open_loop_outputs_[i]));
             }
 
@@ -321,8 +321,8 @@ class SerialMotorBridge : public rclcpp::Node {
             }
 
             for (size_t i = 0; i < 4; ++i) {
-                const double output = last_open_loop_outputs_[i] + (desired_outputs[i] - last_open_loop_outputs_[i]) * slew_scale;
-                last_open_loop_outputs_[i]                = std::clamp (output, -1.0, 1.0);
+                const double output                      = last_open_loop_outputs_[i] + (desired_outputs[i] - last_open_loop_outputs_[i]) * slew_scale;
+                last_open_loop_outputs_[i]               = std::clamp (output, -1.0, 1.0);
                 command_msg_.data.mc[i].target_wheel_rps = static_cast<float> (last_open_loop_outputs_[i]);
             }
         }
@@ -555,7 +555,7 @@ class SerialMotorBridge : public rclcpp::Node {
     sb::Message<MotorFeedbackPacket> feedback_msg_;
 
     std::array<double, 4> last_open_loop_outputs_{};
-    double last_position_rad_[4]{};
+    double                last_position_rad_[4]{};
 
     rclcpp::Time last_command_time_;
     rclcpp::Time last_feedback_time_;
