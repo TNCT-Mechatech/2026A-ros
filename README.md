@@ -185,18 +185,9 @@ Chassis Control
 
 ## Clone
 
-`SerialBridge` をGit Submoduleとして使用しているため、  
-cloneするときは `--recursive` を付けてください。
-
 ```bash
-git clone --recursive git@github.com:TNCT-Mechatech/2026A-ros.git
+git clone git@github.com:TNCT-Mechatech/2026A-ros.git
 cd 2026A-ros
-```
-
-すでに普通にcloneしてしまった場合：
-
-```bash
-git submodule update --init --recursive
 ```
 
 ---
