@@ -11,11 +11,9 @@
 using std::placeholders::_1;
 
 // 2台のマイコンは、それぞれ別のUSBシリアルポートを使用する。
-constexpr const char *INJECT_SERIAL_PORT =
-    "/dev/serial/by-path/pci-0000:00:14.0-usb-0:1:1.2";
+constexpr const char *INJECT_SERIAL_PORT = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:1:1.2";
 
-constexpr const char *ROLL_SERIAL_PORT =
-    "/dev/serial/by-path/pci-0000:00:14.0-usb-0:2:1.2";
+constexpr const char *ROLL_SERIAL_PORT = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:2:1.2";
 // ros2 runでエラー出たらとりあえずこれ
 // sudo chmod 666 /dev/serial/by-path/platform-fd500000.pcie-pci-0000\:01\:00.0-usb-0\:1.4\:1.2
 
@@ -24,33 +22,33 @@ constexpr const char *ROLL_SERIAL_PORT =
 
 SerialNode::SerialNode (const std::string &node_name, const char port[], Mechanism mechanism, const std::string &feedback_topic, speed_t baud_rate)
     : Node (node_name),
-        serial_dev (new LinuxHardwareSerial (port, baud_rate)),
-        serial (new SerialBridge (serial_dev, 1024)),
-        mechanism_ (mechanism),
-        s1 (false),
-        s2 (false),
-        s3 (false),
-        s4 (false),
-        s5 (false),
-        s6 (false),
-        lx (0.f),
-        ly (0.f),
-        rx (0.f),
-        ry (0.f),
-        l2 (0.f),
-        r2 (0.f),
-        ex1 (0.f),
-        ex2 (0.f),
-        cross (false),
-        circle (false),
-        triangle (false),
-        square (false),
-        l1 (false),
-        r1 (false),
-        up (false),
-        down (false),
-        left (false),
-        right (false) {
+      serial_dev (new LinuxHardwareSerial (port, baud_rate)),
+      serial (new SerialBridge (serial_dev, 1024)),
+      mechanism_ (mechanism),
+      s1 (false),
+      s2 (false),
+      s3 (false),
+      s4 (false),
+      s5 (false),
+      s6 (false),
+      lx (0.f),
+      ly (0.f),
+      rx (0.f),
+      ry (0.f),
+      l2 (0.f),
+      r2 (0.f),
+      ex1 (0.f),
+      ex2 (0.f),
+      cross (false),
+      circle (false),
+      triangle (false),
+      square (false),
+      l1 (false),
+      r1 (false),
+      up (false),
+      down (false),
+      left (false),
+      right (false) {
     con.data = MotorCommandPacket{};  // 初期化
     fb.data  = MotorFeedbackPacket{};
 
@@ -96,8 +94,8 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
             RCLCPP_WARN (this->get_logger (), "Joy message has too few axes for the roll mechanism");
             return;
         }
-        ly  = msg->axes[1];
-        rx  = -msg->axes[2];
+        ly = msg->axes[1];
+        rx = -msg->axes[2];
 
         ex1 = msg->axes[6];
         ex2 = msg->axes[7];
@@ -168,10 +166,8 @@ int main (int argc, char *argv[]) {
     rclcpp::init (argc, argv);
 
     // 1プロセス内で2ノードを動かし、2台のマイコンへ個別に接続する。
-    auto inject_node = std::make_shared<SerialNode> (
-        "inject_serial_node", INJECT_SERIAL_PORT, Mechanism::Inject, "inject/fb_speed_topic");
-    auto roll_node = std::make_shared<SerialNode> (
-        "roll_serial_node", ROLL_SERIAL_PORT, Mechanism::Roll, "roll/fb_speed_topic");
+    auto inject_node = std::make_shared<SerialNode> ("inject_serial_node", INJECT_SERIAL_PORT, Mechanism::Inject, "inject/fb_speed_topic");
+    auto roll_node   = std::make_shared<SerialNode> ("roll_serial_node", ROLL_SERIAL_PORT, Mechanism::Roll, "roll/fb_speed_topic");
 
     rclcpp::executors::MultiThreadedExecutor exec;  // 並列コールバックOK
     exec.add_node (inject_node);
