@@ -22,32 +22,32 @@ using std::placeholders::_1;
 
 SerialNode::SerialNode (const char port[], speed_t baud_rate)
     : Node ("serial_node"),
-      serial_dev (new LinuxHardwareSerial (port, baud_rate)),
-      serial (new SerialBridge (serial_dev, 1024)),
-      s1 (false),
-      s2 (false),
-      s3 (false),
-      s4 (false),
-      s5 (false),
-      s6 (false),
-      lx (0.f),
-      ly (0.f),
-      rx (0.f),
-      ry (0.f),
-      l2 (0.f),
-      r2 (0.f),
-      ex1 (0.f),
-      ex2 (0.f),
-      cross (false),
-      circle (false),
-      triangle (false),
-      square (false),
-      l1 (false),
-      r1 (false),
-      up (false),
-      down (false),
-      left (false),
-      right (false) {
+        serial_dev (new LinuxHardwareSerial (port, baud_rate)),
+        serial (new SerialBridge (serial_dev, 1024)),
+        s1 (false),
+        s2 (false),
+        s3 (false),
+        s4 (false),
+        s5 (false),
+        s6 (false),
+        lx (0.f),
+        ly (0.f),
+        rx (0.f),
+        ry (0.f),
+        l2 (0.f),
+        r2 (0.f),
+        ex1 (0.f),
+        ex2 (0.f),
+        cross (false),
+        circle (false),
+        triangle (false),
+        square (false),
+        l1 (false),
+        r1 (false),
+        up (false),
+        down (false),
+        left (false),
+        right (false) {
     con.data = MotorCommandPacket{};  // 初期化
     fb.data  = MotorFeedbackPacket{};
 
@@ -86,10 +86,10 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
     // left = msg->buttons[13];
     // right = msg->buttons[14];
 
-    // 発射装置①
+    // 発射装置1
     con.data.mc[0].target_wheel_rps = -ex1;
 
-    // 発射装置②
+    // 発射装置2
     con.data.mc[1].target_wheel_rps = ex2;
 
     // 未使用

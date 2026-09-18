@@ -5,6 +5,7 @@
 #include <termios.h>  // speed_t
 
 #include <memory>
+#include <string>
 
 // ROS2 messages
 #include "sensor_msgs/msg/joy.hpp"
@@ -21,9 +22,14 @@ class SerialBridge;
 
 using namespace std::chrono_literals;
 
+enum class Mechanism {
+    Inject,
+    Roll,
+};
+
 class SerialNode : public rclcpp::Node {
    public:
-    explicit SerialNode (const char port[], speed_t baud_rate = B230400);
+    SerialNode (const std::string &node_name, const char port[], Mechanism mechanism, const std::string &feedback_topic, speed_t baud_rate = B230400);
 
    private:
     void joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg);
@@ -36,13 +42,14 @@ class SerialNode : public rclcpp::Node {
 
     SerialDev    *serial_dev;
     SerialBridge *serial;
+    Mechanism     mechanism_;
 
     sb::Message<MotorCommandPacket>  con;
     sb::Message<MotorFeedbackPacket> fb;
 
     bool s1, s2, s3, s4, s5, s6;
 
-    float lx, ly, rx, ry, l2, r2;
+    float lx, ly, rx, ry, l2, r2, ex1, ex2;
     bool  cross, circle, triangle, square, l1, r1;
     bool  up, down, left, right;
 };
