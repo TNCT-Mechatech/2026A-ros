@@ -86,10 +86,10 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
     // left = msg->buttons[13];
     // right = msg->buttons[14];
 
-    // 発射装置①
+    // 発射装置1
     con.data.mc[0].target_wheel_rps = -ex1;
 
-    // 発射装置②
+    // 発射装置2
     con.data.mc[1].target_wheel_rps = ex2;
 
     // 未使用
