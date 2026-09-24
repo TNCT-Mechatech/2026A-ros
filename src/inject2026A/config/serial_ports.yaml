@@ -1,0 +1,9 @@
+inject_serial_node:
+  ros__parameters:
+    # 注入用ST-Link。USBの接続位置には依存しません。
+    serial_path: "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF505071655067254019-if02"
+
+roll_serial_node:
+  ros__parameters:
+    # ロール用ST-Link。USBの接続位置には依存しません。
+    serial_path: "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF555185754867214745-if02"

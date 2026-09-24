@@ -19,8 +19,8 @@ constexpr const char *ROLL_SERIAL_PORT = "/dev/serial/by-id/usb-STMicroelectroni
 
 SerialNode::SerialNode (const std::string &node_name, const char port[], Mechanism mechanism, const std::string &feedback_topic, speed_t baud_rate)
     : Node (node_name),
-      serial_dev (new LinuxHardwareSerial (port, baud_rate)),
-      serial (new SerialBridge (serial_dev, 1024)),
+      serial_dev (nullptr),
+      serial (nullptr),
       mechanism_ (mechanism),
       s1 (false),
       s2 (false),
@@ -48,6 +48,11 @@ SerialNode::SerialNode (const std::string &node_name, const char port[], Mechani
       right (false) {
     con.data = MotorCommandPacket{};  // 初期化
     fb.data  = MotorFeedbackPacket{};
+
+    const auto serial_path = declare_parameter<std::string> ("serial_path", port);
+    RCLCPP_INFO (get_logger (), "Opening serial device: %s", serial_path.c_str ());
+    serial_dev = new LinuxHardwareSerial (serial_path.c_str (), baud_rate);
+    serial = new SerialBridge (serial_dev, 1024);
 
     subscription_ = this->create_subscription<sensor_msgs::msg::Joy> ("inject/joy", 10, std::bind (&SerialNode::joy_callback, this, _1));
 
