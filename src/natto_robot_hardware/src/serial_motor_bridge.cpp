@@ -32,7 +32,7 @@ using namespace std::chrono_literals;
 class SerialMotorBridge : public rclcpp::Node {
    public:
     SerialMotorBridge () : Node ("serial_motor_bridge") {
-        serial_path_       = declare_parameter<std::string> ("serial_path", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:1.2:1.2");
+        serial_path_       = declare_parameter<std::string> ("serial_path", "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02");
         command_topic_     = declare_parameter<std::string> ("command_topic", "/command_joint_states");
         joint_state_topic_ = declare_parameter<std::string> ("joint_state_topic", "/joint_states");
 

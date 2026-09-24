@@ -1,0 +1,7 @@
+<launch>
+  <arg name="serial_config" default="$(find-pkg-share inject2026A)/config/serial_ports.yaml"/>
+  <!-- main内のinject_serial_nodeとroll_serial_nodeの名前を維持します。 -->
+  <node pkg="inject2026A" exec="main" output="screen">
+    <param from="$(var serial_config)"/>
+  </node>
+</launch>

@@ -1,5 +1,5 @@
 <launch>
-    <arg name="serial_path" default="/dev/serial/by-path/pci-0000\:00\:14.0-usb-0\:1.2\:1.2"/>
+    <arg name="serial_path" default="/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02"/>
     <arg name="launch_behavior" default="true"/>
     <arg name="launch_sensing" default="true"/>
     <arg name="launch_localization" default="true"/>
