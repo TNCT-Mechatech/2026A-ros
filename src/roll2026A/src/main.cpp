@@ -47,7 +47,7 @@ SerialNode::SerialNode (const char port[], speed_t baud_rate)
     const auto serial_path = declare_parameter<std::string> ("serial_path", port);
     RCLCPP_INFO (get_logger (), "Opening serial device: %s", serial_path.c_str ());
     serial_dev = new LinuxHardwareSerial (serial_path.c_str (), baud_rate);
-    serial = new SerialBridge (serial_dev, 1024);
+    serial     = new SerialBridge (serial_dev, 1024);
 
     subscription_ = this->create_subscription<sensor_msgs::msg::Joy> ("inject/joy", 10, std::bind (&SerialNode::joy_callback, this, _1));
 
