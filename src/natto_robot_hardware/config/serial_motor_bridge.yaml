@@ -1,6 +1,7 @@
 serial_motor_bridge:
   ros__parameters:
-    # serial_path: "/dev/serial/by-path/pci-0000:00:14.0-usb-0:2.2:1.2"
+    # メカナム用ST-Linkの個体番号で固定。USBの接続位置には依存しません。
+    serial_path: "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02"
 
     command_topic: "/command_joint_states"
     joint_state_topic: "/joint_states"

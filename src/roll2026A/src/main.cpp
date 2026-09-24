@@ -10,15 +10,8 @@
 #include <exception>
 using std::placeholders::_1;
 
-// SerialPort (仮)
-#define SERIAL_PORT "/dev/serial/by-path/pci-0000:00:14.0-usb-0:1.4:1.2"
-// #define SERIAL_PORT "/dev/ttyACM0"
-
-// ros2 runでエラー出たらとりあえずこれ
-// sudo chmod 666 /dev/serial/by-path/platform-fd500000.pcie-pci-0000\:01\:00.0-usb-0\:1.4\:1.2
-
-// SerialPort for ThinkPad
-// #define SERIAL_PORT "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5:1.2"
+// ロール用ST-Linkの個体番号で固定する。
+constexpr const char *SERIAL_PORT = "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF555185754867214745-if02";
 
 SerialNode::SerialNode (const char port[], speed_t baud_rate)
     : Node ("serial_node"),

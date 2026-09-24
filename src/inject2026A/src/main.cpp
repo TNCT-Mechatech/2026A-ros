@@ -11,14 +11,11 @@
 using std::placeholders::_1;
 
 // 2台のマイコンは、それぞれ別のUSBシリアルポートを使用する。
-constexpr const char *INJECT_SERIAL_PORT = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:1:1.2";
+// 注入用ST-Linkの個体番号で固定する。
+constexpr const char *INJECT_SERIAL_PORT = "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF505071655067254019-if02";
 
-constexpr const char *ROLL_SERIAL_PORT = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:2:1.2";
-// ros2 runでエラー出たらとりあえずこれ
-// sudo chmod 666 /dev/serial/by-path/platform-fd500000.pcie-pci-0000\:01\:00.0-usb-0\:1.4\:1.2
-
-// SerialPort for ThinkPad
-// #define SERIAL_PORT "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5:1.2"
+// ロール用ST-Linkの個体番号で固定する。
+constexpr const char *ROLL_SERIAL_PORT = "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF555185754867214745-if02";
 
 SerialNode::SerialNode (const std::string &node_name, const char port[], Mechanism mechanism, const std::string &feedback_topic, speed_t baud_rate)
     : Node (node_name),

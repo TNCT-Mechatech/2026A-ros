@@ -1,5 +1,5 @@
 <launch>
-    <arg name="serial_path" default="/dev/serial/by-path/pci-0000\:00\:14.0-usb-0\:1.2\:1.2"/>
+    <arg name="serial_path" default="/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02"/>
     <arg name="open_loop_full_scale_rps" default="4.0"/>
     <arg name="open_loop_output_limit" default="0.2"/>
     <arg name="open_loop_slew_rate_per_sec" default="1.0"/>
