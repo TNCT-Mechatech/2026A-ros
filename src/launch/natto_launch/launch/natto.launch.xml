@@ -1,4 +1,24 @@
 <launch>
+    <!-- Generic launch keeps opt-in defaults; auto entry points enable these. -->
+    <arg name="launch_inject" default="false" description="Start both inject and roll nodes via inject2026A"/>
+    <arg name="inject_serial_config" default="$(find-pkg-share inject2026A)/config/serial_ports.yaml"/>
+    <arg name="inject_joy_topic" default="/inject/joy"/>
+    <arg name="monitor_mecanum_device" default=""/>
+    <arg name="launch_system_monitor" default="false"/>
+    <arg name="record" default="false"/>
+    <arg name="rosgraph" default="true"/>
+    <arg name="publish_pursuit_debug" default="false"/>
+    <arg name="monitor_inject" default="$(var launch_inject)"/>
+    <arg name="monitor_roll" default="$(var launch_inject)"/>
+    <arg name="monitor_mecanum" default="false"/>
+    <arg name="monitor_config" default="$(find-pkg-share natto_system_monitor)/config/monitor.yaml"/>
+    <arg name="record_config" default="$(find-pkg-share natto_system_monitor)/config/recording.yaml"/>
+    <arg name="bag_directory" default="$(env HOME)/rosbags"/>
+    <arg name="bag_name" default=""/>
+    <arg name="navigation_mode" default="sequence"/>
+    <arg name="destinations_path" default=""/>
+    <arg name="goal_buttons_path" default=""/>
+    <let name="managed_navigation" value="$(eval &quot;'$(var navigation_mode)' == 'buttons'&quot;)"/>
     <arg name="chassis_type" default="swerve"/>
     <arg name="use_odom_tf" default="false"/>
     <arg name="use_laserscan_convert" default="true"/>
@@ -46,8 +66,10 @@
 
     <arg name="joint_state_topics" default="['/$(var chassis_type)/command_joint_states', '/controller/joint_states', '/behavior/command_joint_states']"/>
 
+    <include file="$(find-pkg-share natto_launch)/launch/components/navigation.launch.py"/>
+
     <!-- 行動管理 -->
-    <include file="$(find-pkg-share natto_launch)/launch/components/behavior.launch.xml" if="$(var launch_behavior)"/>
+    <include file="$(find-pkg-share natto_launch)/launch/components/behavior.launch.xml" if="$(eval &quot;'$(var launch_behavior)'.lower() == 'true' and '$(var navigation_mode)' == 'sequence'&quot;)"/>
 
     <!-- コモン -->
     <include file="$(find-pkg-share natto_launch)/launch/components/common.launch.xml" if="$(var launch_common)"/>
@@ -69,4 +91,29 @@
 
     <!-- 表示 -->
     <include file="$(find-pkg-share natto_launch)/launch/components/visualization.launch.xml" if="$(var launch_visualization)"/>
+
+    <!-- inject2026A/main owns both mechanism nodes; start it only once. -->
+    <include file="$(find-pkg-share inject2026A)/launch/inject.launch.xml" if="$(var launch_inject)">
+        <arg name="serial_config" value="$(var inject_serial_config)"/>
+        <arg name="joy_topic" value="$(var inject_joy_topic)"/>
+    </include>
+
+    <include file="$(find-pkg-share natto_system_monitor)/launch/monitor.launch.py" if="$(eval &quot;'$(var launch_system_monitor)'.lower() == 'true' or '$(var record)'.lower() == 'true'&quot;)">
+        <arg name="monitor" value="$(var launch_system_monitor)"/>
+        <arg name="record" value="$(var record)"/>
+        <arg name="rosgraph" value="$(var rosgraph)"/>
+        <arg name="managed_navigation" value="$(var managed_navigation)"/>
+        <arg name="monitor_lidar" value="$(var launch_sensing)"/>
+        <arg name="monitor_localization" value="$(var launch_localization)"/>
+        <arg name="monitor_navigation" value="$(eval &quot;'$(var launch_control)'.lower() == 'true' and '$(var launch_dynamic_auto_control)'.lower() == 'true'&quot;)"/>
+        <arg name="monitor_inject" value="$(var monitor_inject)"/>
+        <arg name="monitor_roll" value="$(var monitor_roll)"/>
+        <arg name="monitor_mecanum" value="$(var monitor_mecanum)"/>
+        <arg name="monitor_config" value="$(var monitor_config)"/>
+        <arg name="serial_ports_config" value="$(eval &quot;'$(var inject_serial_config)' if '$(var launch_inject)'.lower() == 'true' else ''&quot;)"/>
+        <arg name="mecanum_device" value="$(var monitor_mecanum_device)"/>
+        <arg name="record_config" value="$(var record_config)"/>
+        <arg name="bag_directory" value="$(var bag_directory)"/>
+        <arg name="bag_name" value="$(var bag_name)"/>
+    </include>
 </launch>
