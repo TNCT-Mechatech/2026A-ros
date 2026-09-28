@@ -1,5 +1,5 @@
-#include "natto_robot_hardware/serial_packets.hpp"
 #include "natto_robot_hardware/pid_gain_path.hpp"
+#include "natto_robot_hardware/serial_packets.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "yaml-cpp/yaml.h"
 

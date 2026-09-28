@@ -1,10 +1,10 @@
 #include "LinuxHardwareSerial.hpp"
 #include "SerialBridge.hpp"
+#include "natto_robot_hardware/pid_gain_path.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "serial_packets.hpp"
 #include "vrft_auto_tuner.hpp"
 #include "yaml-cpp/yaml.h"
-#include "natto_robot_hardware/pid_gain_path.hpp"
 
 #include "debug_msgs/msg/feedback.hpp"
 #include "debug_msgs/msg/pid_gain.hpp"
@@ -14,8 +14,8 @@
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -26,7 +26,7 @@ using namespace std::literals::chrono_literals;
 class ParamCheck : public rclcpp::Node {
    public:
     ParamCheck () : Node ("param_check") {
-        serial_path_                = declare_parameter<std::string> ("serial_path", "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02");
+        serial_path_          = declare_parameter<std::string> ("serial_path", "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02");
         pid_gain_output_path_ = natto_robot_hardware::resolve_pid_gain_path (declare_parameter<std::string> ("gain_output_path", ""));
         set_parameter (rclcpp::Parameter ("gain_output_path", pid_gain_output_path_));
         const auto output_directory = std::filesystem::path (pid_gain_output_path_).parent_path ();

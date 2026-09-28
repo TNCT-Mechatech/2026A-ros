@@ -39,7 +39,9 @@ class LinuxHardwareSerial : public SerialDev {
     virtual int write (unsigned char *data, unsigned int len);
 
     // Read-only diagnostics accessor; transport behavior is unchanged.
-    int diagnostic_fd () const { return _fd; }
+    int diagnostic_fd () const {
+        return _fd;
+    }
 
    private:
     int            _fd;

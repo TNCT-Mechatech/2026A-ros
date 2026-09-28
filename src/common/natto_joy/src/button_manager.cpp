@@ -705,9 +705,7 @@ void button_manager::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
         }
     }
     // An unassigned power function must not continuously publish OFF.
-    const bool has_power_button = std::any_of (button_function_.begin (), button_function_.end (), [] (const auto &functions) {
-        return std::find (functions.begin (), functions.end (), "power") != functions.end ();
-    });
+    const bool has_power_button = std::any_of (button_function_.begin (), button_function_.end (), [] (const auto &functions) { return std::find (functions.begin (), functions.end (), "power") != functions.end (); });
     if (has_power_button) power_publisher_->publish (power_msg_);
     allow_auto_drive_publisher_->publish (allow_auto_drive_msg_);
     if (!allow_auto_drive_msg_.data) {

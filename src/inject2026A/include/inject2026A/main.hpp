@@ -2,10 +2,11 @@
 
 #include "rclcpp/rclcpp.hpp"
 
+#include <natto_system_monitor/serial_diagnostics.hpp>
+
 #include <termios.h>  // speed_t
 
 #include <memory>
-#include <natto_system_monitor/serial_diagnostics.hpp>
 #include <string>
 
 // ROS2 messages
@@ -41,10 +42,10 @@ class SerialNode : public rclcpp::Node {
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr publisher_;  // Publisher の宣言
     rclcpp::TimerBase::SharedPtr                                   timer_;
 
-    SerialDev    *serial_dev;
-    SerialBridge *serial;
+    SerialDev                                               *serial_dev;
+    SerialBridge                                            *serial;
     std::unique_ptr<natto_system_monitor::SerialDiagnostics> serial_diagnostics_;
-    Mechanism     mechanism_;
+    Mechanism                                                mechanism_;
 
     sb::Message<MotorCommandPacket>  con;
     sb::Message<MotorFeedbackPacket> fb;

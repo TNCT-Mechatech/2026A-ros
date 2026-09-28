@@ -54,8 +54,8 @@ SerialNode::SerialNode (const std::string &node_name, const char port[], Mechani
     const auto serial_path = declare_parameter<std::string> ("serial_path", port);
     RCLCPP_INFO (get_logger (), "Opening serial device: %s", serial_path.c_str ());
     serial_diagnostics_ = std::make_unique<natto_system_monitor::SerialDiagnostics> (this, serial_path);
-    serial_dev = new natto_system_monitor::ObservedSerial<LinuxHardwareSerial> (serial_path.c_str (), baud_rate, *serial_diagnostics_);
-    serial = new SerialBridge (serial_dev, 1024);
+    serial_dev          = new natto_system_monitor::ObservedSerial<LinuxHardwareSerial> (serial_path.c_str (), baud_rate, *serial_diagnostics_);
+    serial              = new SerialBridge (serial_dev, 1024);
 
     subscription_ = this->create_subscription<sensor_msgs::msg::Joy> ("inject/joy", 10, std::bind (&SerialNode::joy_callback, this, _1));
 
@@ -116,15 +116,11 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
         con.data.mc[3].target_wheel_rps = rx * 0.3f;
     }
 
-    errno = 0;
+    errno                  = 0;
     const int write_result = serial->write (0);
-    const int write_errno = errno;
+    const int write_errno  = errno;
     if (write_result < 0) {
-        RCLCPP_ERROR_THROTTLE (
-            this->get_logger (), *this->get_clock (), 1000,
-            "Serial write failed: write=%d errno=%d (%s)",
-            write_result, write_errno,
-            write_errno ? std::strerror (write_errno) : "No OS error; check registered SerialBridge frame");
+        RCLCPP_ERROR_THROTTLE (this->get_logger (), *this->get_clock (), 1000, "Serial write failed: write=%d errno=%d (%s)", write_result, write_errno, write_errno ? std::strerror (write_errno) : "No OS error; check registered SerialBridge frame");
         return;
     }
 
