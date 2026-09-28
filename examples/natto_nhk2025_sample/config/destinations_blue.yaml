@@ -1,0 +1,22 @@
+frame_id: map
+destinations:
+  flag:
+    label: 旗ねらい
+    x: 3.7
+    y: 4.7
+    yaw_deg: 90.0
+  home:
+    label: 帰還
+    x: 9.5
+    y: 3.4
+    yaw_deg: 0.0
+  behind:
+    label: 旗後ろ
+    x: 4.5
+    y: 1.7
+    yaw_deg: 90.0
+  far:
+    label: 遠方
+    x: 1.7
+    y: 5.0
+    yaw_deg: 270.0

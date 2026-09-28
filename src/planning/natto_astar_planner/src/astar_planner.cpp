@@ -25,15 +25,22 @@ rclcpp::NodeOptions explicit_parameter_declaration (rclcpp::NodeOptions options)
 }  // namespace
 
 astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("astar_planner", explicit_parameter_declaration (node_options)) {
+    managed_navigation_ = this->declare_parameter<bool> ("managed_navigation", false);
     path_publisher_      = this->create_publisher<nav_msgs::msg::Path> ("path", 10);
     costmap_publisher_   = this->create_publisher<nav_msgs::msg::OccupancyGrid> ("costmap", rclcpp::QoS (rclcpp::KeepLast (1)).transient_local ().reliable ());
     goal_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped> ("fixed_goal_pose", 10);
     occupancy_grid_subscription_ =
         this->create_subscription<nav_msgs::msg::OccupancyGrid> ("occupancy_grid", rclcpp::QoS (rclcpp::KeepLast (1)).transient_local ().reliable (), std::bind (&astar_planner::occupancy_grid_callback, this, std::placeholders::_1));
-    goal_pose_subscription_    = this->create_subscription<geometry_msgs::msg::PoseStamped> ("goal_pose", 10, std::bind (&astar_planner::goal_pose_callback, this, std::placeholders::_1));
+    if (managed_navigation_) {
+        navigation_path_publisher_ = this->create_publisher<natto_msgs::msg::NavigationPath> ("navigation_path", 10);
+        navigation_goal_subscription_ = this->create_subscription<natto_msgs::msg::NavigationGoal> (
+            "navigation_goal", 10, std::bind (&astar_planner::navigation_goal_callback, this, std::placeholders::_1));
+    } else {
+        goal_pose_subscription_ = this->create_subscription<geometry_msgs::msg::PoseStamped> ("goal_pose", 10, std::bind (&astar_planner::goal_pose_callback, this, std::placeholders::_1));
+    }
     current_pose_subscription_ = this->create_subscription<geometry_msgs::msg::PoseStamped> ("current_pose", 10, std::bind (&astar_planner::current_pose_callback, this, std::placeholders::_1));
     footprint_subscription_    = this->create_subscription<geometry_msgs::msg::PolygonStamped> ("footprint", 10, std::bind (&astar_planner::footprint_callback, this, std::placeholders::_1));
-    goal_reached_subscription_ = this->create_subscription<std_msgs::msg::Bool> ("goal_reached", 10, std::bind (&astar_planner::goal_reached_callback, this, std::placeholders::_1));
+    if (!managed_navigation_) goal_reached_subscription_ = this->create_subscription<std_msgs::msg::Bool> ("goal_reached", 10, std::bind (&astar_planner::goal_reached_callback, this, std::placeholders::_1));
 
     theta_resolution_deg_              = static_cast<int> (this->declare_parameter<int> ("theta_resolution_deg", 5));
     map_frame_                         = this->declare_parameter<std::string> ("map_frame", "map");
@@ -68,6 +75,48 @@ astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("
     for (const auto &zone : restricted_zones_) {
         RCLCPP_INFO (this->get_logger (), "restricted zone '%s': vertices=%zu, lidar_ignore=%s, keepout=%s", zone.name.c_str (), zone.vertices.size (), zone.lidar_ignore ? "true" : "false", zone.keepout ? "true" : "false");
     }
+}
+
+void astar_planner::publish_path (bool valid, const std::string &reason) {
+    path_.header.stamp = this->now ();
+    path_publisher_->publish (path_);  // RViz / legacy interface
+    if (managed_navigation_ && !active_request_id_.empty ()) {
+        natto_msgs::msg::NavigationPath msg;
+        msg.request_id = active_request_id_;
+        msg.path = path_;
+        msg.valid = valid;
+        msg.reason = reason;
+        navigation_path_publisher_->publish (msg);
+    }
+}
+
+void astar_planner::clear_navigation (const std::string &reason) {
+    path_.poses.clear ();
+    goal_pose_ = geometry_msgs::msg::PoseStamped ();
+    previous_goal_pose_ = geometry_msgs::msg::PoseStamped ();
+    publish_path (false, reason);
+    active_request_id_.clear ();
+}
+
+void astar_planner::navigation_goal_callback (const natto_msgs::msg::NavigationGoal::SharedPtr msg) {
+    if (msg->cancel) {
+        if (msg->request_id == active_request_id_) clear_navigation ("canceled");
+        return;
+    }
+    if (msg->request_id.empty ()) return;
+    if (!active_request_id_.empty ()) clear_navigation ("replaced");
+    active_request_id_ = msg->request_id;
+    const auto &p = msg->pose.pose.position;
+    const auto &q = msg->pose.pose.orientation;
+    const double norm = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+    if (msg->pose.header.frame_id != map_frame_ || !std::isfinite (p.x) || !std::isfinite (p.y) ||
+        !std::isfinite (norm) || std::abs (norm - 1.0) > 0.01) {
+        clear_navigation ("invalid goal pose");
+        return;
+    }
+    goal_pose_ = msg->pose;
+    previous_goal_pose_ = msg->pose;
+    create_path ();
 }
 
 void astar_planner::occupancy_grid_callback (const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -126,6 +175,9 @@ void astar_planner::goal_pose_callback (const geometry_msgs::msg::PoseStamped::S
 
 void astar_planner::current_pose_callback (const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
     current_pose_ = *msg;
+    // The first pose can arrive after the goal, map and footprint. Retry only
+    // a pending request; canceled/failed requests have no active ID.
+    if (managed_navigation_ && !active_request_id_.empty () && path_.poses.empty ()) create_path ();
 }
 
 void astar_planner::footprint_callback (const geometry_msgs::msg::PolygonStamped::SharedPtr msg) {
@@ -140,33 +192,60 @@ void astar_planner::footprint_callback (const geometry_msgs::msg::PolygonStamped
 }
 
 void astar_planner::create_path () {
-    if (raw_map_.data.empty ()) return;
-    if (goal_pose_.header.frame_id.empty ()) return;
-    if (current_pose_.header.frame_id.empty ()) return;
+    if (raw_map_.data.empty () || goal_pose_.header.frame_id.empty () || current_pose_.header.frame_id.empty ()) return;
+    if (managed_navigation_ && footprint_.polygon.points.empty ()) return;
 
-    auto                            start_pose = find_free_space_pose (current_pose_.pose);
-    auto                            goal_pose  = find_free_space_pose (goal_pose_.pose);
-    geometry_msgs::msg::PoseStamped fixed_goal_pose;
-    fixed_goal_pose.header.frame_id = map_frame_;
-    fixed_goal_pose.header.stamp    = this->get_clock ()->now ();
-    fixed_goal_pose.pose            = goal_pose;
-    goal_pose_publisher_->publish (fixed_goal_pose);
-
-    current_pose_.pose = start_pose;
-    goal_pose_.pose    = goal_pose;
-
-    auto linear_path = linear_astar ();
-    if (linear_path.poses.empty ()) {
-        RCLCPP_WARN (this->get_logger (), "linear_astar found no path");
+    // In button mode the requested pose must remain the actual destination.
+    auto start_pose = managed_navigation_ ? current_pose_.pose : find_free_space_pose (current_pose_.pose);
+    auto goal_pose = managed_navigation_ ? goal_pose_.pose : find_free_space_pose (goal_pose_.pose);
+    if (managed_navigation_ && (!rectangle_is_collision_free (start_pose) || !rectangle_is_collision_free (goal_pose))) {
+        clear_navigation ("start or destination is blocked");
         return;
     }
+    geometry_msgs::msg::PoseStamped fixed_goal_pose;
+    fixed_goal_pose.header.frame_id = map_frame_;
+    fixed_goal_pose.header.stamp = this->now ();
+    fixed_goal_pose.pose = goal_pose;
+    goal_pose_publisher_->publish (fixed_goal_pose);
+    current_pose_.pose = start_pose;
+    goal_pose_.pose = goal_pose;
+
+    nav_msgs::msg::Path linear_path;
+    if (managed_navigation_ && to_grid (start_pose.position.x, start_pose.position.y) == to_grid (goal_pose.position.x, goal_pose.position.y)) {
+        linear_path.header = fixed_goal_pose.header;
+        linear_path.poses = {current_pose_, fixed_goal_pose};
+    } else {
+        linear_path = linear_astar ();
+    }
+    if (linear_path.poses.empty ()) {
+        if (managed_navigation_) clear_navigation ("no linear path");
+        else RCLCPP_WARN (this->get_logger (), "linear_astar found no path");
+        return;
+    }
+    if (managed_navigation_) {
+        linear_path.poses.front ().pose = start_pose;
+        linear_path.poses.back ().pose = goal_pose;
+        for (size_t i = 1; i < linear_path.poses.size (); ++i) {
+            const auto &a = linear_path.poses[i - 1].pose.position;
+            const auto &b = linear_path.poses[i].pose.position;
+            if (!line_is_collision_free (a.x, a.y, b.x, b.y)) {
+                clear_navigation ("requested endpoint cannot be connected");
+                return;
+            }
+        }
+    }
     auto linear_smoothed_path = linear_smoother (linear_path);
-
     auto angular_path = angular_astar (linear_smoothed_path);
-
     path_ = angular_smoother (angular_path);
-
-    path_publisher_->publish (path_);
+    if (managed_navigation_ && path_.poses.size () < 2) {
+        clear_navigation ("no angular path");
+        return;
+    }
+    if (managed_navigation_) {
+        path_.poses.front ().pose = start_pose;
+        path_.poses.back ().pose = goal_pose;
+    }
+    publish_path ();
     costmap_publisher_->publish (costmap_);
 }
 
@@ -888,8 +967,7 @@ void astar_planner::replan_timer_callback () {
         RCLCPP_INFO (this->get_logger (), "Angle to path (%.3f rad) exceeds threshold (%.3f rad), replanning...", min_angle, replan_distance_threshold_yaw_deg_ * M_PI / 180.0);
         create_path ();
     } else {
-        path_.header.stamp = this->now ();
-        path_publisher_->publish (path_);
+        publish_path ();
     }
 }
 

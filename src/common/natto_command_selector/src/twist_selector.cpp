@@ -45,6 +45,12 @@ twist_selector::twist_selector (const rclcpp::NodeOptions &node_options) : Node 
 }
 
 void twist_selector::allow_auto_drive_callback (const std_msgs::msg::Bool::SharedPtr msg) {
+    if (allow_auto_drive_ != msg->data) {
+        geometry_msgs::msg::TwistStamped stop;
+        stop.header.stamp = this->now ();
+        stop.header.frame_id = "command/base_link";
+        selected_twist_publisher_->publish (stop);
+    }
     allow_auto_drive_ = msg->data;
 }
 

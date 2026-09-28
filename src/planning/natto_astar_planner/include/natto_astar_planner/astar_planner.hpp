@@ -26,6 +26,8 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "natto_msgs/msg/navigation_goal.hpp"
+#include "natto_msgs/msg/navigation_path.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -49,6 +51,14 @@ class astar_planner : public rclcpp::Node {
     astar_planner (const rclcpp::NodeOptions &node_options);
 
    private:
+    bool managed_navigation_ = false;
+    std::string active_request_id_;
+    rclcpp::Subscription<natto_msgs::msg::NavigationGoal>::SharedPtr navigation_goal_subscription_;
+    rclcpp::Publisher<natto_msgs::msg::NavigationPath>::SharedPtr navigation_path_publisher_;
+    void navigation_goal_callback (const natto_msgs::msg::NavigationGoal::SharedPtr msg);
+    void publish_path (bool valid = true, const std::string &reason = "");
+    void clear_navigation (const std::string &reason);
+
     int         theta_resolution_deg_;
     std::string map_frame_;
     double      xy_inflation_, xy_offset_, yaw_offset_;

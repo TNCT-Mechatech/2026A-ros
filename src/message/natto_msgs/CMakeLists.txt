@@ -15,7 +15,7 @@ file(
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${natto_msgs_files}
-  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
+  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces nav_msgs
 )
 
 ament_auto_package()
