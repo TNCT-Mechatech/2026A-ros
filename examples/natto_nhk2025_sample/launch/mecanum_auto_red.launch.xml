@@ -8,7 +8,7 @@
     <arg name="launch_dynamic_auto_control" default="true"/>
     <arg name="launch_static_auto_control" default="false"/>
     <arg name="speed_path_directory" default=""/>
-    <arg name="controller_max_xy_speed_m_s" default="0.3"/>
+    <arg name="controller_max_xy_speed_m_s" default="1.0"/>
     <arg name="controller_max_yaw_speed_rad_s" default="1.0"/>
     <arg name="lakibeam_hostip" default="0.0.0.0"/>
     <arg name="lakibeam_port_front" default="2368"/>
