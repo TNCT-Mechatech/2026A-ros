@@ -10,6 +10,7 @@ find_package(rclcpp REQUIRED)
 find_package(debug_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(natto_robot_hardware REQUIRED)
 
 set(SERIAL_BRIDGE_DIR ${CMAKE_CURRENT_LIST_DIR}/../../SerialBridge)
 
@@ -38,7 +39,7 @@ target_include_directories(param_checker PRIVATE
 
 target_compile_features(param_checker PRIVATE cxx_std_17)
 target_link_libraries(param_checker serial_bridge yaml-cpp)
-ament_target_dependencies(param_checker rclcpp sensor_msgs debug_msgs)
+ament_target_dependencies(param_checker rclcpp sensor_msgs debug_msgs natto_robot_hardware)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -50,5 +51,7 @@ endif()
 install(TARGETS param_checker
   DESTINATION lib/${PROJECT_NAME}
 )
+
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 ament_package()

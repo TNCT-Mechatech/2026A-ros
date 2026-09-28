@@ -2,6 +2,9 @@
     <node_container pkg="rclcpp_components" exec="component_container" name="dynamic_auto_control_container" namespace="control" if="$(var launch_dynamic_auto_control)">
          <!-- 経路計算  -->
         <composable_node pkg="natto_astar_planner" plugin="astar_planner::astar_planner" name="astar_planner" namespace="/planning">
+            <param name="managed_navigation" value="$(var managed_navigation)"/>
+            <remap from="navigation_goal" to="/navigation/goal"/>
+            <remap from="navigation_path" to="/navigation/path"/>
             <param from="$(var planning_param_path)"/>
             <param from="$(var restricted_zones_param_path)"/>
             <remap from="occupancy_grid" to="/common/occupancy_grid"/>
@@ -15,6 +18,10 @@
 
          <!-- 経路追従 -->
         <composable_node pkg="natto_holonomic_pure_pursuit" plugin="holonomic_pure_pursuit::holonomic_pure_pursuit" name="holonomic_pure_pursuit" namespace="/control">
+            <param name="publish_debug" value="$(var publish_pursuit_debug)"/>
+            <param name="managed_navigation" value="$(var managed_navigation)"/>
+            <remap from="navigation_path" to="/navigation/path"/>
+            <remap from="navigation_feedback" to="/navigation/feedback"/>
             <param from="$(var control_param_path)"/>
             <remap from="current_pose" to="/localization/current_pose"/>
             <remap from="path" to="/planning/path"/>
@@ -64,7 +71,7 @@
         <!-- joy ボタン選択 -->
         <composable_node pkg="natto_joy" plugin="button_manager::button_manager" name="button_manager" namespace="/controller">
             <param from="$(var controller_param_path)"/>
-            <remap from="allow_auto_drive" to="/controller/allow_auto_drive"/>
+            <remap from="allow_auto_drive" to="$(eval &quot;'/controller/legacy_allow_auto_drive' if '$(var navigation_mode)' == 'buttons' else '/controller/allow_auto_drive'&quot;)"/>
             <remap from="get_origin_joint_name" to="/get_origin_joint_name"/>
         </composable_node>
 

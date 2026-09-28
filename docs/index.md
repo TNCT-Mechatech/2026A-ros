@@ -7,6 +7,7 @@
 
 ## パッケージ一覧
 ### behavior
+- [natto_navigation](behavior/natto_navigation) : ボタンによる移動先選択とキャンセル
 - [natto_state_machine](behavior/natto_state_machine) : 状態遷移を管理するステートマシン
 
 ### common

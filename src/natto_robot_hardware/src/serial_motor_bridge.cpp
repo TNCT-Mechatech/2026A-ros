@@ -1,3 +1,4 @@
+#include "natto_robot_hardware/pid_gain_path.hpp"
 #include "natto_robot_hardware/serial_packets.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "yaml-cpp/yaml.h"
@@ -36,7 +37,9 @@ class SerialMotorBridge : public rclcpp::Node {
         command_topic_     = declare_parameter<std::string> ("command_topic", "/command_joint_states");
         joint_state_topic_ = declare_parameter<std::string> ("joint_state_topic", "/joint_states");
 
-        pid_gain_config_path_ = declare_parameter<std::string> ("gain_config_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
+        pid_gain_config_path_ = natto_robot_hardware::resolve_pid_gain_path (declare_parameter<std::string> ("gain_config_path", ""));
+        set_parameter (rclcpp::Parameter ("gain_config_path", pid_gain_config_path_));
+        RCLCPP_INFO (get_logger (), "PID gain config path: %s", pid_gain_config_path_.c_str ());
 
         stop_mode_ = declare_parameter<bool> ("stop_mode", false);
 

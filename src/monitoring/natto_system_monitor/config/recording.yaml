@@ -1,0 +1,32 @@
+# Explicit allow-list. No clouds, costmaps, particles, camera images or /rosout.
+topics:
+  - /sensing/lidar/laserscan/front
+  - /sensing/lidar/laserscan/rear
+  - /localization/current_pose
+  - /localization/wheel_odometry/odometry
+  - /planning/path
+  - /planning/fixed_goal_pose
+  - /goal_pose
+  - /control/command_velocity
+  - /control/lookahead
+  - /control/pursuit_debug
+  - /control/dynamic/goal_reached
+  - /controller/command_velocity
+  - /controller/allow_auto_drive
+  - /controller/joy
+  - /command_velocity
+  - /joint_states
+  - /navigation/input
+  - /navigation/goal
+  - /navigation/path
+  - /navigation/feedback
+  - /navigation/status
+  - /inject/joy
+  - /inject/fb_speed_topic
+  - /roll/fb_speed_topic
+  - /diagnostics
+  - /diagnostics_agg
+  - /diagnostics_toplevel_state
+  - /rosgraph
+  - /tf
+  - /tf_static

@@ -8,7 +8,7 @@
     num_particles: 300
     initial_pose_x: 3.9
     initial_pose_y: 10.0
-    initial_pose_yaw_deg: -90.0
+    initial_pose_yaw_deg: 0.0
     motion_noise_xx: 0.2
     motion_noise_xy: 0.05
     motion_noise_yy: 0.2

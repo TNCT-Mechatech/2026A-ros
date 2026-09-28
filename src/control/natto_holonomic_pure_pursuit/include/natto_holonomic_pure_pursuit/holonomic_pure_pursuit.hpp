@@ -20,6 +20,9 @@
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
+#include "natto_msgs/msg/navigation_feedback.hpp"
+#include "natto_msgs/msg/navigation_path.hpp"
+#include "natto_msgs/msg/pursuit_debug.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -33,6 +36,13 @@ class holonomic_pure_pursuit : public rclcpp::Node {
     holonomic_pure_pursuit (const rclcpp::NodeOptions &options);
 
    private:
+    rclcpp::Publisher<natto_msgs::msg::PursuitDebug>::SharedPtr       debug_publisher_;
+    bool                                                              managed_navigation_ = false;
+    std::string                                                       active_request_id_;
+    rclcpp::Subscription<natto_msgs::msg::NavigationPath>::SharedPtr  navigation_path_subscriber_;
+    rclcpp::Publisher<natto_msgs::msg::NavigationFeedback>::SharedPtr navigation_feedback_publisher_;
+    void                                                              navigation_path_callback (const natto_msgs::msg::NavigationPath::SharedPtr msg);
+
     double lookahead_time_;                  // 速度スケーリング用の時間 [s]
     double min_lookahead_distance_;          // 最小lookahead距離 [m]
     double max_lookahead_distance_;          // 最大lookahead距離 [m]

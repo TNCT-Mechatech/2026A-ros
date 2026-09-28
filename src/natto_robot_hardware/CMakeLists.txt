@@ -68,4 +68,6 @@ install(DIRECTORY
   DESTINATION include
 )
 
+ament_export_include_directories(include)
+
 ament_package()

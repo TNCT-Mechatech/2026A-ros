@@ -9,6 +9,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(natto_system_monitor REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -35,7 +36,8 @@ add_executable(main
   )
 
   
-ament_target_dependencies(main rclcpp std_msgs sensor_msgs geometry_msgs)
+ament_target_dependencies(main rclcpp std_msgs sensor_msgs geometry_msgs natto_system_monitor)
+target_compile_features(main PRIVATE cxx_std_17)
 
 foreach(node ${node_list})
 #  add_executable(${node} src/${node}.cpp src/trapezoidal_acc.cpp)

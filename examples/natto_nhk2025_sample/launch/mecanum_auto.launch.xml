@@ -1,4 +1,23 @@
 <launch>
+    <!-- Auto operation, monitoring and mechanisms share this entry point. -->
+    <arg name="launch_inject" default="true" description="Start both inject and roll nodes via inject2026A"/>
+    <arg name="inject_serial_config" default="$(find-pkg-share inject2026A)/config/serial_ports.yaml"/>
+    <arg name="inject_joy_topic" default="/inject/joy"/>
+    <arg name="launch_system_monitor" default="true"/>
+    <arg name="record" default="false"/>
+    <arg name="rosgraph" default="true"/>
+    <arg name="publish_pursuit_debug" default="false"/>
+    <arg name="monitor_inject" default="$(var launch_inject)"/>
+    <arg name="monitor_roll" default="$(var launch_inject)"/>
+    <arg name="monitor_mecanum" default="true"/>
+    <arg name="monitor_config" default="$(find-pkg-share natto_system_monitor)/config/monitor.yaml"/>
+    <arg name="record_config" default="$(find-pkg-share natto_system_monitor)/config/recording.yaml"/>
+    <arg name="bag_directory" default="$(env HOME)/rosbags"/>
+    <arg name="bag_name" default=""/>
+    <arg name="gain_config_path" default="" description="PID YAML path; empty uses ROS_HOME/natto/pid_gain.yaml (default: ~/.ros/natto/pid_gain.yaml)"/>
+    <arg name="navigation_mode" default="buttons"/>
+    <arg name="destinations_path" default="$(find-pkg-share natto_nhk2025_sample)/config/destinations.yaml"/>
+    <arg name="goal_buttons_path" default="$(find-pkg-share natto_nhk2025_sample)/config/goal_buttons_common.yaml"/>
     <arg name="serial_path" default="/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02"/>
     <arg name="launch_behavior" default="true"/>
     <arg name="launch_sensing" default="true"/>
@@ -47,6 +66,24 @@
     </include>
 
     <include file="$(find-pkg-share natto_launch)/launch/natto.launch.xml">
+        <arg name="launch_system_monitor" value="$(var launch_system_monitor)"/>
+        <arg name="record" value="$(var record)"/>
+        <arg name="rosgraph" value="$(var rosgraph)"/>
+        <arg name="publish_pursuit_debug" value="$(var publish_pursuit_debug)"/>
+        <arg name="monitor_inject" value="$(var monitor_inject)"/>
+        <arg name="monitor_roll" value="$(var monitor_roll)"/>
+        <arg name="monitor_mecanum" value="$(var monitor_mecanum)"/>
+        <arg name="monitor_config" value="$(var monitor_config)"/>
+        <arg name="record_config" value="$(var record_config)"/>
+        <arg name="bag_directory" value="$(var bag_directory)"/>
+        <arg name="bag_name" value="$(var bag_name)"/>
+        <arg name="launch_inject" value="$(var launch_inject)"/>
+        <arg name="inject_serial_config" value="$(var inject_serial_config)"/>
+        <arg name="inject_joy_topic" value="$(var inject_joy_topic)"/>
+        <arg name="monitor_mecanum_device" value="$(var serial_path)"/>
+        <arg name="navigation_mode" value="$(var navigation_mode)"/>
+        <arg name="destinations_path" value="$(var destinations_path)"/>
+        <arg name="goal_buttons_path" value="$(var goal_buttons_path)"/>
         <arg name="chassis_type" value="mecanum"/>
         <arg name="chassis_param_path" value="$(find-pkg-share natto_nhk2025_sample)/config/chassis/mecanum.yaml"/>
         <arg name="urdf_path" value="$(find-pkg-share natto_nhk2025_sample)/urdf/mecanum_sample.urdf.xacro"/>
@@ -82,5 +119,6 @@
       output="screen">
       <param from="$(find-pkg-share natto_robot_hardware)/config/serial_motor_bridge.yaml"/>
       <param name="serial_path" value="$(var serial_path)"/>
+      <param name="gain_config_path" value="$(var gain_config_path)" type="str"/>
     </node>
 </launch>

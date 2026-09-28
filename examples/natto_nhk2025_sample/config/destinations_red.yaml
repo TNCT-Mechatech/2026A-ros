@@ -1,0 +1,17 @@
+frame_id: map
+destinations:
+  flag:
+    label: 旗ねらい
+    x: 4.32
+    y: 5.61
+    yaw_deg: 169.0
+  bucket_3:
+    label: バケツ3ねらい
+    x: 4.58
+    y: 7.77
+    yaw_deg: 152.4
+  home:
+    label: 帰還
+    x: 3.72
+    y: 9.84
+    yaw_deg: 90.0

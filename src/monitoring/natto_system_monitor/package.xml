@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>natto_system_monitor</name>
+  <version>1.0.0</version>
+  <description>Passive robot diagnostics, graph observation and MCAP trial logging.</description>
+  <maintainer email="keikei.ikaika@gmail.com">mechatech</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rclcpp</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>diagnostic_aggregator</depend>
+  <depend>pluginlib</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>natto_msgs</depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>rosgraph_monitor</exec_depend>
+  <!-- Jazzy 0.2.3 binary links librsl; its upstream manifest omits this runtime dependency. -->
+  <exec_depend>rsl</exec_depend>
+  <exec_depend>rosbag2_transport</exec_depend>
+  <exec_depend>ros2bag</exec_depend>
+  <exec_depend>rosbag2_storage_mcap</exec_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>rclpy</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

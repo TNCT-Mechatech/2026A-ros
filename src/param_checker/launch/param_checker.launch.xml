@@ -1,0 +1,8 @@
+<launch>
+  <arg name="gain_output_path" default="" description="PID YAML output; empty uses ROS_HOME/natto/pid_gain.yaml (default: ~/.ros/natto/pid_gain.yaml)"/>
+  <arg name="serial_path" default="/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02"/>
+  <node pkg="param_checker" exec="param_checker" name="param_check" output="screen">
+    <param name="gain_output_path" value="$(var gain_output_path)" type="str"/>
+    <param name="serial_path" value="$(var serial_path)" type="str"/>
+  </node>
+</launch>

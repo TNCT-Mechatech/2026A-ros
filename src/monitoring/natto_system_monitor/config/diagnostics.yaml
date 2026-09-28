@@ -1,0 +1,34 @@
+diagnostic_aggregator:
+  ros__parameters:
+    pub_rate: 1.0
+    base_path: ''
+    analyzers:
+      system:
+        type: natto_system_monitor/HealthGroup
+        path: SYSTEM
+        analyzers:
+          sensors:
+            type: natto_system_monitor/HealthAnalyzer
+            path: Sensors
+            contains: ['Sensors/']
+            timeout: 3.0
+          localization:
+            type: natto_system_monitor/HealthAnalyzer
+            path: Localization
+            contains: ['Localization/']
+            timeout: 3.0
+          planning:
+            type: natto_system_monitor/HealthAnalyzer
+            path: Planning
+            contains: ['Planning/']
+            timeout: 3.0
+          control:
+            type: natto_system_monitor/HealthAnalyzer
+            path: Control
+            contains: ['Control/', 'rosgraph']
+            timeout: 3.0
+          hardware:
+            type: natto_system_monitor/HealthAnalyzer
+            path: Hardware
+            contains: ['Hardware/', 'natto_robot_hardware/serial_motor_bridge']
+            timeout: 3.0

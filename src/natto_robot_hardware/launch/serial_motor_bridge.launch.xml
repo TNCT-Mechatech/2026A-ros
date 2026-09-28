@@ -1,9 +1,11 @@
 <launch>
+  <arg name="gain_config_path" default="" description="PID YAML path; empty uses ROS_HOME/natto/pid_gain.yaml (default: ~/.ros/natto/pid_gain.yaml)"/>
   <node
     pkg="natto_robot_hardware"
     exec="serial_motor_bridge"
     name="serial_motor_bridge"
     output="screen">
     <param from="$(find-pkg-share natto_robot_hardware)/config/serial_motor_bridge.yaml"/>
+    <param name="gain_config_path" value="$(var gain_config_path)" type="str"/>
   </node>
 </launch>

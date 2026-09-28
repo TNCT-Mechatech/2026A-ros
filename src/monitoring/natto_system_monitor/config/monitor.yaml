@@ -1,0 +1,56 @@
+system_monitor:
+  ros__parameters:
+    diagnostic_updater.period: 1.0
+    frequency_window_sec: 2.0
+    startup_grace_sec: 3.0
+    state_timeout_sec: 1.0
+    managed_navigation: false
+    quaternion_norm_tolerance: 0.01
+    scan_max_nan_fraction: 0.5
+    front:
+      enabled: true
+      topic: /sensing/lidar/laserscan/front
+      node: ''  # Simulation/driver variants: publisher/type still checked.
+      min_hz: 24.0
+      timeout_sec: 0.5
+    rear:
+      enabled: true
+      topic: /sensing/lidar/laserscan/rear
+      node: ''
+      min_hz: 24.0
+      timeout_sec: 0.5
+    localization:
+      enabled: true
+      topic: /localization/current_pose
+      node: /localization/mcl/mcl
+      min_hz: 30.0
+      timeout_sec: 0.5
+    path:
+      enabled: true
+      node: /planning/astar_planner
+      min_hz: 0.0
+      warn_age_sec: 2.0
+      timeout_sec: 5.0
+      # topic defaults depend on managed_navigation; override only if remapped.
+    command:
+      enabled: true
+      node: /control/holonomic_pure_pursuit
+      min_hz: 40.0
+      timeout_sec: 0.5
+    inject:
+      enabled: false
+      device: /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF505071655067254019-if02
+      diagnostic_name: 'inject_serial_node: Hardware/Serial'
+      timeout_sec: 3.0
+    roll:
+      enabled: false
+      device: /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF555185754867214745-if02
+      diagnostic_name: 'roll_serial_node: Hardware/Serial'
+      timeout_sec: 3.0
+    mecanum:
+      enabled: false
+      device: /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02
+      diagnostic_name: natto_robot_hardware/serial_motor_bridge
+      timeout_sec: 3.0
+    # Optional graph.expected_nodes, graph.publisher_topics, graph.subscriber_topics:
+    # string arrays of exact fully qualified names; enabled targets are checked too.

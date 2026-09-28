@@ -4,106 +4,176 @@
   <!-- ==================== -->
   <!-- Parameters           -->
   <!-- ==================== -->
+
+  <!-- Mecanum wheel -->
   <xacro:property name="wheel_radius" value="0.076"/>
-  <xacro:property name="wheel_width"  value="0.04"/>
+  <xacro:property name="wheel_width"  value="0.040"/>
+
+  <!-- Robot outer size -->
+  <!-- Length: 860 mm -->
+  <!-- Width : 702 mm -->
+  <xacro:property name="robot_length" value="0.860"/>
+  <xacro:property name="robot_width"  value="0.702"/>
+
+  <!-- Wheel positions relative to robot center -->
+  <!-- Front edge -> front wheel center : 116 mm -->
+  <!-- Rear edge  -> rear wheel center  : 128 mm -->
+  <!-- Left edge  -> left wheel center  : 65 mm -->
+  <!-- Right edge -> right wheel center : 60 mm -->
+
+  <xacro:property name="wheel_x_front" value="0.314"/>
+  <xacro:property name="wheel_x_rear"  value="0.302"/>
+
+  <xacro:property name="wheel_y_left"  value="0.286"/>
+  <xacro:property name="wheel_y_right" value="0.291"/>
+
   <xacro:property name="color_alpha" value="1.0"/>
 
-  <xacro:property name="wheel_x" value="0.305"/>
-  <xacro:property name="wheel_y" value="0.29"/>
 
   <!-- ==================== -->
   <!-- Base link            -->
   <!-- ==================== -->
-  <link name="base_link"/>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+
+      <geometry>
+        <box size="${robot_length} ${robot_width} 0.04"/>
+      </geometry>
+
+      <material name="base_color">
+        <color rgba="0.2 0.2 0.2 0.35"/>
+      </material>
+    </visual>
+  </link>
+
 
   <!-- ==================== -->
   <!-- Mecanum wheel macro  -->
   <!-- ==================== -->
+
   <xacro:macro name="mecanum" params="wheel_name x y angle">
 
-    <!-- wheel base link -->
+    <!-- Wheel base link -->
     <link name="${wheel_name}_base_link"/>
 
-    <!-- wheel base joint -->
+    <!-- Wheel base joint -->
     <joint name="${wheel_name}_base" type="fixed">
       <parent link="base_link"/>
       <child link="${wheel_name}_base_link"/>
-      <origin xyz="${x} ${y} ${wheel_radius}" rpy="0 0 ${angle}"/>
+
+      <origin
+        xyz="${x} ${y} ${wheel_radius}"
+        rpy="0 0 ${angle}"/>
+
       <axis xyz="0 0 1"/>
     </joint>
 
-    <!-- wheel link -->
+
+    <!-- Wheel link -->
     <link name="${wheel_name}_link">
+
       <visual>
         <geometry>
-          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+          <cylinder
+            radius="${wheel_radius}"
+            length="${wheel_width}"/>
         </geometry>
+
         <origin rpy="1.5708 0 0"/>
+
         <material name="black">
           <color rgba="0.1 0.1 0.1 ${color_alpha}"/>
         </material>
       </visual>
+
     </link>
 
-    <!-- wheel joint -->
+
+    <!-- Wheel rotation joint -->
     <joint name="${wheel_name}" type="continuous">
+
       <parent link="${wheel_name}_base_link"/>
       <child link="${wheel_name}_link"/>
+
       <axis xyz="0 1 0"/>
+
     </joint>
 
   </xacro:macro>
+
 
   <!-- ==================== -->
   <!-- Mecanum instances    -->
   <!-- ==================== -->
 
+
   <!-- Front Left -->
   <xacro:mecanum
     wheel_name="mecanum_wheel_fl"
-    x="${wheel_x}"
-    y="${wheel_y}"
+    x="${wheel_x_front}"
+    y="${wheel_y_left}"
     angle="-0.7853981635"/>
+
 
   <!-- Front Right -->
   <xacro:mecanum
     wheel_name="mecanum_wheel_fr"
-    x="${wheel_x}"
-    y="-${wheel_y}"
+    x="${wheel_x_front}"
+    y="-${wheel_y_right}"
     angle="0.7853981635"/>
+
 
   <!-- Rear Left -->
   <xacro:mecanum
     wheel_name="mecanum_wheel_rl"
-    x="-${wheel_x}"
-    y="${wheel_y}"
+    x="-${wheel_x_rear}"
+    y="${wheel_y_left}"
     angle="0.7853981635"/>
+
 
   <!-- Rear Right -->
   <xacro:mecanum
     wheel_name="mecanum_wheel_rr"
-    x="-${wheel_x}"
-    y="-${wheel_y}"
+    x="-${wheel_x_rear}"
+    y="-${wheel_y_right}"
     angle="-0.7853981635"/>
+
 
   <!-- ==================== -->
   <!-- Lidar Front          -->
   <!-- ==================== -->
+
   <link name="lidar_front"/>
+
   <joint name="base_to_lidar_front" type="fixed">
+
     <parent link="base_link"/>
     <child link="lidar_front"/>
-    <origin xyz="0.47 0 0" rpy="0 0 0"/>
+
+    <origin
+      xyz="0.440 0 0"
+      rpy="0 0 0"/>
+
   </joint>
+
 
   <!-- ==================== -->
   <!-- Lidar Rear           -->
   <!-- ==================== -->
+
   <link name="lidar_rear"/>
+
   <joint name="base_to_lidar_rear" type="fixed">
+
     <parent link="base_link"/>
     <child link="lidar_rear"/>
-    <origin xyz="-0.47 0 0" rpy="0 0 3.1415926535"/>
+
+    <origin
+      xyz="-0.440 0 0"
+      rpy="0 0 3.1415926535"/>
+
   </joint>
 
 </robot>

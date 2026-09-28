@@ -10,6 +10,10 @@
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
 
   <exec_depend>lakibeam1</exec_depend>
+  <exec_depend>natto_launch</exec_depend>
+  <exec_depend>natto_system_monitor</exec_depend>
+  <exec_depend>inject2026A</exec_depend>
+  <exec_depend>natto_robot_hardware</exec_depend>
 
   <!-- <depend> 依存関係追加 </depend> -->
 

@@ -6,12 +6,6 @@
     joy_deadzone: 0.0
 
     num_button: 17
-    button_0:
-      function: "power"
-      mode: "toggle_off"
-    button_1:
-      function: "power"
-      mode: "toggle_on"
     button_16:
       function: "allow_auto_drive"
       mode: "hold"

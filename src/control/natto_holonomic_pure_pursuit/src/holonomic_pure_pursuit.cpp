@@ -17,11 +17,22 @@
 namespace holonomic_pure_pursuit {
 
 holonomic_pure_pursuit::holonomic_pure_pursuit (const rclcpp::NodeOptions &options) : Node ("holonomic_pure_pursuit", options) {
-    cmd_vel_publisher_      = this->create_publisher<geometry_msgs::msg::TwistStamped> ("command_velocity", 1);
-    lookahead_publisher_    = this->create_publisher<geometry_msgs::msg::PoseStamped> ("lookahead", 1);
-    goal_reached_publisher_ = this->create_publisher<std_msgs::msg::Bool> ("goal_reached", 1);
-    pose_subscriber_        = this->create_subscription<geometry_msgs::msg::PoseStamped> ("current_pose", 1, std::bind (&holonomic_pure_pursuit::pose_callback, this, std::placeholders::_1));
-    path_subscriber_        = this->create_subscription<nav_msgs::msg::Path> ("path", 1, std::bind (&holonomic_pure_pursuit::path_callback, this, std::placeholders::_1));
+    managed_navigation_ = this->declare_parameter<bool> ("managed_navigation", false);
+    rcl_interfaces::msg::ParameterDescriptor debug_descriptor;
+    debug_descriptor.read_only = true;
+    if (this->declare_parameter<bool> ("publish_debug", false, debug_descriptor)) {
+        debug_publisher_ = this->create_publisher<natto_msgs::msg::PursuitDebug> ("pursuit_debug", rclcpp::SensorDataQoS ());
+    }
+    if (!managed_navigation_) cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped> ("command_velocity", 1);
+    lookahead_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped> ("lookahead", 1);
+    if (!managed_navigation_) goal_reached_publisher_ = this->create_publisher<std_msgs::msg::Bool> ("goal_reached", 1);
+    pose_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped> ("current_pose", 1, std::bind (&holonomic_pure_pursuit::pose_callback, this, std::placeholders::_1));
+    if (managed_navigation_) {
+        navigation_feedback_publisher_ = this->create_publisher<natto_msgs::msg::NavigationFeedback> ("navigation_feedback", 10);
+        navigation_path_subscriber_    = this->create_subscription<natto_msgs::msg::NavigationPath> ("navigation_path", 10, std::bind (&holonomic_pure_pursuit::navigation_path_callback, this, std::placeholders::_1));
+    } else {
+        path_subscriber_ = this->create_subscription<nav_msgs::msg::Path> ("path", 1, std::bind (&holonomic_pure_pursuit::path_callback, this, std::placeholders::_1));
+    }
 
     double frequency = this->declare_parameter<double> ("frequency", 50.0);
     delta_t_s_       = 1.0 / frequency;
@@ -72,6 +83,14 @@ holonomic_pure_pursuit::holonomic_pure_pursuit (const rclcpp::NodeOptions &optio
 void holonomic_pure_pursuit::pose_callback (const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
     std::lock_guard<std::mutex> lock (data_mutex_);
     current_pose_ = msg;
+}
+
+void holonomic_pure_pursuit::navigation_path_callback (const natto_msgs::msg::NavigationPath::SharedPtr msg) {
+    std::lock_guard<std::mutex> lock (data_mutex_);
+    if (msg->request_id != active_request_id_ || !msg->valid) last_cmd_vel_.reset ();
+    active_request_id_ = msg->valid ? msg->request_id : "";
+    path_              = std::make_shared<nav_msgs::msg::Path> (msg->path);
+    if (!msg->valid) path_->poses.clear ();
 }
 
 void holonomic_pure_pursuit::path_callback (const nav_msgs::msg::Path::SharedPtr msg) {
@@ -253,7 +272,7 @@ void holonomic_pure_pursuit::timer_callback () {
 
     std_msgs::msg::Bool goal_reached_msg;
     goal_reached_msg.data = goal_position_reached && goal_speed_xy_reached && goal_yaw_reached && goal_speed_yaw_reached;
-    goal_reached_publisher_->publish (goal_reached_msg);
+    if (!managed_navigation_) goal_reached_publisher_->publish (goal_reached_msg);
 
     geometry_msgs::msg::TwistStamped cmd_vel;
     cmd_vel.header.stamp    = this->now ();
@@ -261,7 +280,27 @@ void holonomic_pure_pursuit::timer_callback () {
     cmd_vel.twist.linear.x  = speed * std::cos (angle_diff);
     cmd_vel.twist.linear.y  = speed * std::sin (angle_diff);
     cmd_vel.twist.angular.z = yaw_speed;
-    cmd_vel_publisher_->publish (cmd_vel);
+    if (managed_navigation_) {
+        natto_msgs::msg::NavigationFeedback feedback;
+        feedback.request_id = active_request_id_;
+        feedback.command    = cmd_vel;
+        feedback.reached    = goal_reached_msg.data;
+        navigation_feedback_publisher_->publish (feedback);
+    } else {
+        cmd_vel_publisher_->publish (cmd_vel);
+    }
+
+    // Copy existing calculations only; this output never feeds the controller.
+    if (debug_publisher_) {
+        natto_msgs::msg::PursuitDebug debug;
+        debug.header         = cmd_vel.header;
+        debug.request_id     = active_request_id_;
+        debug.path_error     = min_distance;
+        debug.goal_distance  = goal_distance;
+        debug.goal_yaw_error = yaw_error;
+        debug.target_speed   = target_speed;
+        debug_publisher_->publish (debug);
+    }
 
     geometry_msgs::msg::PoseStamped lookahead_msg;
     lookahead_msg.header.stamp    = this->now ();
