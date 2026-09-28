@@ -9,7 +9,7 @@ ROS 2 Jazzy / C++の受動監視。既存制御topicへpublishせず、制御・
 ```bash
 sudo apt install ros-jazzy-diagnostic-updater ros-jazzy-diagnostic-aggregator ros-jazzy-rosgraph-monitor ros-jazzy-rsl ros-jazzy-rosbag2-storage-mcap ros-jazzy-plotjuggler-ros
 source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install --packages-up-to natto_system_monitor inject2026A roll2026A natto_holonomic_pure_pursuit natto_launch natto_nhk2025_sample
+colcon build --symlink-install --packages-up-to natto_system_monitor inject2026A natto_holonomic_pure_pursuit natto_launch natto_nhk2025_sample
 source install/setup.bash
 ros2 launch natto_system_monitor monitor.launch.py
 ```
@@ -23,7 +23,7 @@ ros2 launch natto_nhk2025_sample mecanum_auto_red.launch.xml launch_system_monit
 
 buttons方式は全体launchのnavigation_modeに自動追従。監視だけ別起動する場合は`managed_navigation:=true`を渡す。停止しているlaunch_localizationやlaunch_dynamic_auto_controlに対応する監視は全体launchから無効化する。監視を二重起動しない。
 
-Serial機構を使用する試走では`monitor_inject:=true monitor_roll:=true`を付ける。これらは機構を起動する引数ではない。既存の`ros2 launch inject2026A inject.launch.xml`が2 nodeを起動する。`roll2026A main`との同時使用はしない。単独rollではmonitor YAMLの`roll.diagnostic_name`を`serial_node: Hardware/Serial`にし、record YAMLへ`/fb_speed_topic`を追加する。Mecanum実機bridgeを監視する場合は`monitor_mecanum:=true`。
+Serial機構を使用する試走では`monitor_inject:=true monitor_roll:=true`を付ける。これらは機構を起動する引数ではない。既存の`ros2 launch inject2026A inject.launch.xml`が2 nodeを起動する。単独の`roll2026A`は削除済みのため、rollも`inject2026A`内の`roll_serial_node`を使用する。Mecanum実機bridgeを監視する場合は`monitor_mecanum:=true`。
 
 ## Diagnostics
 
@@ -124,7 +124,7 @@ write成功はOSへの全バイトwrite成功を意味し、機構の実動作/f
 ## 変更ファイル
 
 ルートREADMEに手順リンクを追加。新規ファイルは本package全体と`src/message/natto_msgs/msg/PursuitDebug.msg`。
-既存変更はinject2026A/roll2026Aの`src/main.cpp`、`include/*/main.hpp`、`SerialBridge/src/LinuxHardwareSerial.hpp`、`CMakeLists.txt`、`package.xml`、Pure Pursuitのcpp/hpp、natto_launchのpackage.xml・natto.launch.xml・components/control.launch.xml、実機exampleのmecanum_auto/red/blue・mecanum_real/open_loop launch。
+既存変更はinject2026Aの`src/main.cpp`、`include/*/main.hpp`、`SerialBridge/src/LinuxHardwareSerial.hpp`、`CMakeLists.txt`、`package.xml`、Pure Pursuitのcpp/hpp、natto_launchのpackage.xml・natto.launch.xml・components/control.launch.xml、実機exampleのmecanum_auto/red/blue・mecanum_real/open_loop launch。
 
 ## 検証
 
@@ -132,10 +132,12 @@ write成功はOSへの全バイトwrite成功を意味し、機構の実動作/f
 
 機構packageをビルドした後に`python3 src/monitoring/natto_system_monitor/test/test_serial_pty.py`で疑似端末に対するinject/rollの実行試験を行える。Pure Pursuitをビルド後に`python3 src/monitoring/natto_system_monitor/test/test_pursuit_debug.py`でdebug有効/無効の出力一致を検証できる。DDS domain 194/196/197/198をテスト専用に使う。実機のUSB抜去・負荷を伴う30Hz/50Hz運転は別途試走確認が必要。
 
-既存package名inject2026A/roll2026Aの命名警告は名前を維持する制約上残る。vendored roll SerialBridgeのGNU可変長配列は通信コードを変えず、そのtargetだけ-Wno-vlaを適用する。追加C++コードのコンパイル警告は残さない。
+既存package名inject2026Aの命名警告は残る。
 
 
 ### この環境での検証結果 (2026-09-27)
+
+以下は単独roll2026A削除前の記録。現在のPTYテストはinject2026A内のinject/roll両nodeを対象とする。
 
 - 変更対象7 package（natto_msgs, natto_system_monitor, inject2026A, roll2026A, natto_holonomic_pure_pursuit, natto_launch, natto_nhk2025_sample）のビルド成功。最終監視C++再ビルドも成功。
 - 自動テスト7件成功（監視integration 2、Serial observer 1、内容/時計/集約のunit 4）。errors/failures/skippedはいずれも0。

@@ -1,5 +1,7 @@
 # 実装前の調査 (2026-09-27)
 
+この調査後に単独roll2026Aは削除された。現在はinject2026A内のroll_serial_nodeを使用する。
+
 既存の未コミット変更（navigation、hardware、launch等）も含めて確認し、保持した。
 全package.xml・launch構成を列挙し、関連nodeのpublisher/subscriberとmessage定義を確認した。
 

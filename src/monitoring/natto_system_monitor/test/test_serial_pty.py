@@ -1,6 +1,6 @@
 """Manual integration test: real mechanism executables connected only to PTYs.
 
-Build inject2026A/roll2026A first; run with python3. Never opens a robot device.
+Build inject2026A first; run with python3. Never opens a robot device.
 """
 import os
 import pty
@@ -103,9 +103,6 @@ class SerialPTY(unittest.TestCase):
 
     def test_inject_and_roll_nodes(self):
         self.run_mechanisms('inject2026A', ['inject_serial_node', 'roll_serial_node'])
-
-    def test_standalone_roll(self):
-        self.run_mechanisms('roll2026A', ['serial_node'])
 
 
 if __name__ == '__main__':
