@@ -1,0 +1,10 @@
+graph_monitor:
+  ros__parameters:
+    diagnostics_publish_period_ms: 1000
+    graph_monitor:
+      diagnostic_namespace: rosgraph
+      continuity:
+        enable: true
+        ignore_subscriber_nodes: [/rosbag2_recorder, /foxglove_bridge, /system_monitor]
+      # No rmw_stats_shim or Deadline QoS changes to existing control nodes.
+      # Frequency monitoring is performed by system_monitor's passive subscriptions.

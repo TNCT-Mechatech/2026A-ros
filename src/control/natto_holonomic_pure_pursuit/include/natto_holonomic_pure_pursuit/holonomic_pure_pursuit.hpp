@@ -23,6 +23,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "natto_msgs/msg/navigation_path.hpp"
 #include "natto_msgs/msg/navigation_feedback.hpp"
+#include "natto_msgs/msg/pursuit_debug.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -35,6 +36,7 @@ class holonomic_pure_pursuit : public rclcpp::Node {
     holonomic_pure_pursuit (const rclcpp::NodeOptions &options);
 
    private:
+    rclcpp::Publisher<natto_msgs::msg::PursuitDebug>::SharedPtr debug_publisher_;
     bool managed_navigation_ = false;
     std::string active_request_id_;
     rclcpp::Subscription<natto_msgs::msg::NavigationPath>::SharedPtr navigation_path_subscriber_;

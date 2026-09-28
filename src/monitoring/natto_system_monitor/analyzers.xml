@@ -1,0 +1,8 @@
+<library path="health_analyzers">
+  <class name="natto_system_monitor/HealthAnalyzer" type="natto_system_monitor::HealthAnalyzer" base_class_type="diagnostic_aggregator::Analyzer">
+    <description>GenericAnalyzer preserving unknown (STALE) separately from ERROR.</description>
+  </class>
+  <class name="natto_system_monitor/HealthGroup" type="natto_system_monitor::HealthGroup" base_class_type="diagnostic_aggregator::Analyzer">
+    <description>AnalyzerGroup with ERROR, STALE, WARN, OK precedence.</description>
+  </class>
+</library>

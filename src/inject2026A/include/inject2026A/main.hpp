@@ -5,6 +5,7 @@
 #include <termios.h>  // speed_t
 
 #include <memory>
+#include <natto_system_monitor/serial_diagnostics.hpp>
 #include <string>
 
 // ROS2 messages
@@ -42,6 +43,7 @@ class SerialNode : public rclcpp::Node {
 
     SerialDev    *serial_dev;
     SerialBridge *serial;
+    std::unique_ptr<natto_system_monitor::SerialDiagnostics> serial_diagnostics_;
     Mechanism     mechanism_;
 
     sb::Message<MotorCommandPacket>  con;

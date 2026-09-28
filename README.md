@@ -661,3 +661,10 @@ reboot
 # License
 
 Apache License 2.0
+
+
+# 状態監視・試走ログ
+
+ROS 2 Diagnostics、ROS Graph監視、MCAP記録、PlotJuggler/Foxglove向け出力は
+[natto_system_monitorの手順](src/monitoring/natto_system_monitor/README.md)を参照してください。
+実topic/nodeの調査結果、起動引数、閾値、診断状態、検証方法をまとめています。

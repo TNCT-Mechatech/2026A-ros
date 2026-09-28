@@ -18,6 +18,11 @@ namespace holonomic_pure_pursuit {
 
 holonomic_pure_pursuit::holonomic_pure_pursuit (const rclcpp::NodeOptions &options) : Node ("holonomic_pure_pursuit", options) {
     managed_navigation_ = this->declare_parameter<bool> ("managed_navigation", false);
+    rcl_interfaces::msg::ParameterDescriptor debug_descriptor;
+    debug_descriptor.read_only = true;
+    if (this->declare_parameter<bool> ("publish_debug", false, debug_descriptor)) {
+        debug_publisher_ = this->create_publisher<natto_msgs::msg::PursuitDebug> ("pursuit_debug", rclcpp::SensorDataQoS ());
+    }
     if (!managed_navigation_) cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped> ("command_velocity", 1);
     lookahead_publisher_    = this->create_publisher<geometry_msgs::msg::PoseStamped> ("lookahead", 1);
     if (!managed_navigation_) goal_reached_publisher_ = this->create_publisher<std_msgs::msg::Bool> ("goal_reached", 1);
@@ -284,6 +289,18 @@ void holonomic_pure_pursuit::timer_callback () {
         navigation_feedback_publisher_->publish (feedback);
     } else {
         cmd_vel_publisher_->publish (cmd_vel);
+    }
+
+    // Copy existing calculations only; this output never feeds the controller.
+    if (debug_publisher_) {
+        natto_msgs::msg::PursuitDebug debug;
+        debug.header = cmd_vel.header;
+        debug.request_id = active_request_id_;
+        debug.path_error = min_distance;
+        debug.goal_distance = goal_distance;
+        debug.goal_yaw_error = yaw_error;
+        debug.target_speed = target_speed;
+        debug_publisher_->publish (debug);
     }
 
     geometry_msgs::msg::PoseStamped lookahead_msg;
