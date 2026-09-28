@@ -55,3 +55,42 @@ ros2 launch inject2026A inject.launch.xml
 `id -nG` に `dialout` が含まれることを確認してください。
 `newgrp` はそのシェルに反映されるため、他の既存ターミナルはログインし直すまで
 古いグループのままです。グループ追加は保存され、USBの再接続・再起動後も有効です。
+
+## PID設定の生成と読み込み
+
+PID係数は `param_checker` で生成します。既定の保存先とメカナム側の読み込み先は
+どちらも `~/.ros/natto/pid_gain.yaml` です。`ROS_HOME` を設定している場合は
+`$ROS_HOME/natto/pid_gain.yaml` を使います。両方を同じユーザー・同じ `ROS_HOME` で実行してください。
+自動生成ファイルはビルドやソースツリーに依存せず、生成後の再ビルドは不要です。
+
+測定時はメカナムの通信ノードを停止し、従来の `param_checker` の測定操作を行います。
+起動しただけで適切な係数になるわけではなく、従来どおり実機の測定データが必要です。
+
+```bash
+source install/setup.bash
+ros2 run param_checker param_checker
+# 測定終了後に「PID gains saved: ...」が表示されたことを確認
+ros2 launch natto_robot_hardware serial_motor_bridge.launch.xml
+```
+
+通常のメカナム実機用・自動制御用launchも同じ既定ファイルを読み込みます。
+ファイルがない場合は、先に `param_checker` の測定と保存を完了してください。
+
+別のファイルを使う場合は、生成側に `gain_output_path`、読み込み側に
+`gain_config_path` で同じ絶対パスを指定します。
+
+```bash
+ros2 launch param_checker param_checker.launch.xml gain_output_path:=/absolute/path/pid_gain.yaml
+# 測定・保存が完了したら起動
+ros2 launch natto_nhk2025_sample mecanum_auto_red.launch.xml gain_config_path:=/absolute/path/pid_gain.yaml
+```
+
+従来の `ros2 run` では `--ros-args -p gain_output_path:=/absolute/path/pid_gain.yaml`
+または `--ros-args -p gain_config_path:=/absolute/path/pid_gain.yaml` で指定できます。
+空文字は共通の既定パスを意味します。相対パスは起動したディレクトリ基準で解決されるため、
+別々のディレクトリから起動する場合は絶対パスを指定してください。
+
+生成側は保存先の親ディレクトリを自動作成し、ファイルを閉じるまでの書き込み失敗を検出します。
+保存失敗時は対象パスと理由を表示し、保存成功とは表示しません。
+診断CSVの既定出力先もPIDファイルと同じディレクトリです。
+`vrft_csv_path` と `serial_diagnostic_csv_path` の明示指定や空文字による無効化は従来どおりです。

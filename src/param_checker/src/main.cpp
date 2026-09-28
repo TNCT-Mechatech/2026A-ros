@@ -4,6 +4,7 @@
 #include "serial_packets.hpp"
 #include "vrft_auto_tuner.hpp"
 #include "yaml-cpp/yaml.h"
+#include "natto_robot_hardware/pid_gain_path.hpp"
 
 #include "debug_msgs/msg/feedback.hpp"
 #include "debug_msgs/msg/pid_gain.hpp"
@@ -14,6 +15,7 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -25,9 +27,12 @@ class ParamCheck : public rclcpp::Node {
    public:
     ParamCheck () : Node ("param_check") {
         serial_path_                = declare_parameter<std::string> ("serial_path", "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02");
-        vrft_csv_path_              = declare_parameter<std::string> ("vrft_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker.csv");
-        serial_diagnostic_csv_path_ = declare_parameter<std::string> ("serial_diagnostic_csv_path", "/home/minimechatech/2026A-ros/src/param_checker/data/vrft_param_checker_serial.csv");
-        pid_gain_output_path_       = declare_parameter<std::string> ("gain_output_path", "/home/minimechatech/2026A-ros/examples/natto_nhk2025_sample/config/pid_gain.yaml");
+        pid_gain_output_path_ = natto_robot_hardware::resolve_pid_gain_path (declare_parameter<std::string> ("gain_output_path", ""));
+        set_parameter (rclcpp::Parameter ("gain_output_path", pid_gain_output_path_));
+        const auto output_directory = std::filesystem::path (pid_gain_output_path_).parent_path ();
+        vrft_csv_path_              = declare_parameter<std::string> ("vrft_csv_path", (output_directory / "vrft_param_checker.csv").string ());
+        serial_diagnostic_csv_path_ = declare_parameter<std::string> ("serial_diagnostic_csv_path", (output_directory / "vrft_param_checker_serial.csv").string ());
+        RCLCPP_INFO (get_logger (), "PID gain output path: %s", pid_gain_output_path_.c_str ());
 
         stop_mode_ = declare_parameter<bool> ("stop_mode", false);
 
@@ -63,7 +68,7 @@ class ParamCheck : public rclcpp::Node {
             vrft_[i].responseTime (static_cast<float> (response_time_seconds_));
         }
 
-        joy_sub_ = create_subscription<sensor_msgs::msg::Joy> ("joy/joy", 10, std::bind (&ParamCheck::joy_callback, this, std::placeholders::_1));
+        joy_sub_ = create_subscription<sensor_msgs::msg::Joy> ("controller/joy", 10, std::bind (&ParamCheck::joy_callback, this, std::placeholders::_1));
 
         open_serial ();
         serial_->add_frame (command_frame_id_, &command_msg_);
@@ -369,8 +374,19 @@ class ParamCheck : public rclcpp::Node {
                 RCLCPP_INFO (get_logger (), "wheel%zu: PID=(%.6f, %.6f, %.6f)", i, gain[0], gain[1], gain[2]);
             }
         }
-        std::ofstream fout (pid_gain_output_path_);
-        fout << config;
+        bool gains_saved = false;
+        try {
+            std::filesystem::create_directories (std::filesystem::path (pid_gain_output_path_).parent_path ());
+            std::ofstream fout;
+            fout.exceptions (std::ios::failbit | std::ios::badbit);
+            fout.open (pid_gain_output_path_);
+            fout << config;
+            fout.close ();
+            gains_saved = true;
+            RCLCPP_INFO (get_logger (), "PID gains saved: %s", pid_gain_output_path_.c_str ());
+        } catch (const std::exception &e) {
+            RCLCPP_ERROR (get_logger (), "Failed to save PID gains to %s: %s", pid_gain_output_path_.c_str (), e.what ());
+        }
 
         write_vrft_csv (gains);
         write_serial_diagnostic_csv ();
@@ -382,7 +398,11 @@ class ParamCheck : public rclcpp::Node {
             timer_ptr_->cancel ();
         }
 
-        RCLCPP_INFO (get_logger (), "Diagnosis completed. Shutting down param_checker.");
+        if (gains_saved) {
+            RCLCPP_INFO (get_logger (), "Diagnosis completed. Shutting down param_checker.");
+        } else {
+            RCLCPP_ERROR (get_logger (), "Diagnosis finished, but PID gains were not saved. Shutting down param_checker.");
+        }
         rclcpp::shutdown ();
     }
 
