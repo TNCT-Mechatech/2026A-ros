@@ -1,6 +1,6 @@
 # natto_system_monitor
 
-ROS 2 Jazzy / C++の受動監視。既存制御topicへpublishせず、制御・経路探索・自己位置推定・Serial通信内容/周期を変更しない。全体構成の調査は[INVESTIGATION.md](INVESTIGATION.md)。
+ROS 2 Jazzy / C++の受動監視。既存制御topicへpublishせず、制御・経路探索・自己位置推定・Serial通信内容/周期を変更しない。共有の `serial_watchdog.hpp` は状態判定のみを提供し、タイムアウト時の停止送信は各制御ノードが行う。全体構成の調査は[INVESTIGATION.md](INVESTIGATION.md)。
 
 ## 起動
 
@@ -117,7 +117,7 @@ Foxglove Extensionはこの変更では編集していない。ROS側で判定�
 
 ## Serialの限界
 
-write成功はOSへの全バイトwrite成功を意味し、機構の実動作/firmware ACKの証明ではない。短いwriteも失敗として数えるが再送しない。fdのopen状態とPOLLHUP/POLLERRを診断時に観測する。
+write成功はOSへの全バイトwrite成功を意味し、機構の実動作/firmware ACKの証明ではない。診断オブザーバーは短いwriteも失敗として数え、自身では再送しない。fdのopen状態とPOLLHUP/POLLERRを診断時に観測する。
 
 既存LinuxHardwareSerialのopen失敗によるexitを保持しているため、失敗したnode自身が継続的にERRORをpublishすることはできない。device欠落は外部device診断でERROR、node/診断の欠落はheartbeatでSTALEとなる。権限・baud設定等によるopen失敗のerrnoは既存stderrを確認する。inject側1プロセス内のどちらかのopen失敗は既存どおり両nodeに影響する。自動再接続は追加していない。
 
