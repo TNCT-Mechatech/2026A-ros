@@ -25,6 +25,12 @@ serial_motor_bridge:
     timeout_ms: 300
     reconnect_interval_ms: 1000
     feedback_timeout_ms: 200
+    startup_feedback_timeout_ms: 1000
+    feedback_recovery_count: 3
+    # 自動launchで有効化。1秒ごとの失敗回数と継続時間を両方満たしたら再起動。
+    restart_failure_count: 1
+    restart_timeout_ms: 1000
+    restart_recovery_ms: 3000
     max_feedback_dt_sec: 0.1
 
     command_frame_id: 0

@@ -14,6 +14,7 @@
   <depend>std_msgs</depend>
   <depend>debug_msgs</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>natto_system_monitor</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

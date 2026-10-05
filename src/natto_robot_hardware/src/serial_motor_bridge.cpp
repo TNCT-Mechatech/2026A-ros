@@ -6,6 +6,8 @@
 #include <LinuxHardwareSerial.hpp>
 #include <Message.hpp>
 #include <SerialBridge.hpp>
+#include <natto_system_monitor/serial_restart.hpp>
+#include <natto_system_monitor/serial_watchdog.hpp>
 
 #include "debug_msgs/msg/feedback.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
@@ -51,6 +53,8 @@ class SerialMotorBridge : public rclcpp::Node {
         open_loop_slew_rate_per_sec_ = declare_parameter<double> ("open_loop_slew_rate_per_sec", 1.0);
         timeout_ms_                  = declare_parameter<int64_t> ("timeout_ms", 300);
         reconnect_interval_ms_       = declare_parameter<int64_t> ("reconnect_interval_ms", 1000);
+
+        if (reconnect_interval_ms_ <= 0) throw std::invalid_argument ("reconnect_interval_ms must be positive");
 
         command_frame_id_  = declare_parameter<int64_t> ("command_frame_id", 0);
         feedback_frame_id_ = declare_parameter<int64_t> ("feedback_frame_id", 1);
@@ -121,6 +125,13 @@ class SerialMotorBridge : public rclcpp::Node {
         diagnostics_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray> ("/diagnostics", 10);
 
         feedback_timeout_ms_ = declare_parameter<int64_t> ("feedback_timeout_ms", 200);
+        watchdog_            = std::make_unique<Watchdog> (
+            std::chrono::milliseconds (feedback_timeout_ms_), std::chrono::milliseconds (declare_parameter<int64_t> ("startup_feedback_timeout_ms", 1000)), std::chrono::milliseconds (timeout_ms_),
+            declare_parameter<int> ("feedback_recovery_count", 3));
+
+        restart_policy_ = std::make_unique<natto_system_monitor::SerialRestartPolicy> (
+            declare_parameter<bool> ("auto_restart", false), declare_parameter<int> ("restart_failure_count", 1), std::chrono::milliseconds (declare_parameter<int64_t> ("restart_timeout_ms", 1000)),
+            std::chrono::milliseconds (declare_parameter<int64_t> ("restart_recovery_ms", 3000)));
 
         max_feedback_dt_sec_ = declare_parameter<double> ("max_feedback_dt_sec", 0.1);
 
@@ -148,8 +159,7 @@ class SerialMotorBridge : public rclcpp::Node {
         initialize_command_packet ();
 
         last_command_time_      = now ();
-        last_feedback_time_     = now ();
-        last_reconnect_attempt_ = now ();
+        last_reconnect_attempt_ = Watchdog::Clock::now ();
 
         try_open_serial ();
 
@@ -172,14 +182,6 @@ class SerialMotorBridge : public rclcpp::Node {
 
    private:
     void close_serial () {
-        try {
-            if (serial_ != nullptr) {
-                serial_->rm_frame (static_cast<SerialBridge::frame_id> (command_frame_id_));
-                serial_->rm_frame (static_cast<SerialBridge::frame_id> (feedback_frame_id_));
-            }
-        } catch (...) {
-        }
-
         delete serial_;
         serial_ = nullptr;
 
@@ -193,28 +195,29 @@ class SerialMotorBridge : public rclcpp::Node {
 #endif
         dev_ = nullptr;
 
-        serial_connected_ = false;
+        serial_connected_       = false;
+        last_reconnect_attempt_ = Watchdog::Clock::now ();
+        set_zero_command ();
     }
 
     bool try_open_serial () {
         close_serial ();
 
+        ++reconnect_attempts_;
         try {
-            // LinuxHardwareSerial exits the process when open(2) fails, so check first and
-            // turn the normal disconnected state into a recoverable exception.
-            if (access (serial_path_.c_str (), R_OK | W_OK) != 0) {
-                throw std::runtime_error ("serial device is unavailable: " + serial_path_ + ": " + std::strerror (errno));
-            }
-
             dev_    = new LinuxHardwareSerial (serial_path_.c_str (), B230400);
             serial_ = new SerialBridge (dev_);
 
+            initialize_command_packet ();
+            command_msg_.was_updated ();
+            feedback_msg_.was_updated ();
             serial_->add_frame (static_cast<SerialBridge::frame_id> (command_frame_id_), &command_msg_);
             serial_->add_frame (static_cast<SerialBridge::frame_id> (feedback_frame_id_), &feedback_msg_);
 
-            serial_connected_         = true;
-            feedback_received_        = false;
-            feedback_timeout_latched_ = false;
+            serial_connected_  = true;
+            feedback_received_ = false;
+            watchdog_->reset (Watchdog::Clock::now ());
+            watchdog_state_ = Watchdog::State::WaitingFeedback;
 
             set_zero_command ();
             if (!write_command ()) {
@@ -238,10 +241,13 @@ class SerialMotorBridge : public rclcpp::Node {
             return false;
         }
 
+        if (watchdog_->check (Watchdog::Clock::now ()) != Watchdog::State::Ready) {
+            set_zero_command ();
+        }
         try {
             const int result = serial_->write (static_cast<SerialBridge::frame_id> (command_frame_id_));
-            if (result < 0) {
-                throw std::runtime_error (std::string ("write failed: ") + std::strerror (errno));
+            if (result != command_msg_.size () + 3) {
+                throw std::runtime_error (result < 0 ? std::string ("write failed: ") + std::strerror (errno) : "short serial write");
             }
             return true;
         } catch (const std::exception &e) {
@@ -285,7 +291,8 @@ class SerialMotorBridge : public rclcpp::Node {
             double velocity = 0.0;
             if (!get_command_velocity (*msg, i, velocity)) {
                 RCLCPP_WARN_THROTTLE (get_logger (), *get_clock (), 1000, "command message has no velocity for %s", wheel_names_[i].c_str ());
-                continue;
+                send_stop ();
+                return;
             }
 
             if (!std::isfinite (velocity)) {
@@ -295,6 +302,12 @@ class SerialMotorBridge : public rclcpp::Node {
             }
 
             wheel_rps[i] = input_unit_ == "radps" ? velocity / (2.0 * M_PI) : velocity;
+        }
+
+        const bool neutral = std::all_of (wheel_rps.begin (), wheel_rps.end (), [] (double value) { return value == 0.0; });
+        if (!watchdog_->command (Watchdog::Clock::now (), neutral)) {
+            send_stop ();
+            return;
         }
 
         if (command_mode_ == "closed_loop_velocity") {
@@ -352,13 +365,24 @@ class SerialMotorBridge : public rclcpp::Node {
     }
 
     void timer_callback () {
+        const auto restart_time          = Watchdog::Clock::now ();
+        const auto restart_state         = watchdog_->check (restart_time);
+        const bool communication_healthy = serial_connected_ && restart_state != Watchdog::State::WaitingFeedback && restart_state != Watchdog::State::FeedbackTimeout && restart_state != Watchdog::State::Recovering;
+        if (restart_policy_->observe (restart_time, communication_healthy)) {
+            RCLCPP_ERROR (get_logger (), "Persistent serial communication failure: requesting process restart");
+            send_stop ();
+            close_serial ();
+            rclcpp::shutdown ();
+            return;
+        }
         const auto current_time = now ();
+        const auto steady_time  = Watchdog::Clock::now ();
 
         if (!serial_connected_) {
-            const auto elapsed_ms = (current_time - last_reconnect_attempt_).nanoseconds () / 1000000;
+            const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds> (steady_time - last_reconnect_attempt_).count ();
 
             if (elapsed_ms >= reconnect_interval_ms_) {
-                last_reconnect_attempt_ = current_time;
+                last_reconnect_attempt_ = steady_time;
                 try_open_serial ();
             }
 
@@ -366,8 +390,9 @@ class SerialMotorBridge : public rclcpp::Node {
             return;
         }
 
+        int update_result = -1;
         try {
-            serial_->update ();
+            update_result = serial_->update ();
         } catch (const std::exception &e) {
             RCLCPP_ERROR (get_logger (), "Serial update failed: %s", e.what ());
             close_serial ();
@@ -380,40 +405,30 @@ class SerialMotorBridge : public rclcpp::Node {
             return;
         }
 
-        const auto command_elapsed_ms = (current_time - last_command_time_).nanoseconds () / 1000000;
-
-        if (command_elapsed_ms > timeout_ms_) {
-            send_stop ();
-        }
-
-        if (feedback_msg_.was_updated ()) {
+        // update() == -1 (no complete frame) still reaches the watchdog check.
+        const auto received_time = Watchdog::Clock::now ();
+        if (update_result == 0 && feedback_msg_.was_updated ()) {
+            watchdog_->feedback (received_time);
             double dt = 0.0;
 
             if (feedback_received_) {
                 dt = (current_time - last_feedback_stamp_).seconds ();
             }
 
-            last_feedback_stamp_      = current_time;
-            last_feedback_time_       = current_time;
-            feedback_received_        = true;
-            feedback_timeout_latched_ = false;
+            last_feedback_stamp_ = current_time;
+            feedback_received_   = true;
 
             publish_joint_state (dt, current_time);
             publish_feedback ();
         }
 
-        if (feedback_received_) {
-            const auto feedback_elapsed_ms = (current_time - last_feedback_stamp_).nanoseconds () / 1000000;
-
-            if (feedback_elapsed_ms > feedback_timeout_ms_) {
-                if (!feedback_timeout_latched_) {
-                    RCLCPP_ERROR (get_logger (), "Motor feedback timed out: %ld ms", feedback_elapsed_ms);
-
-                    send_stop ();
-                    feedback_timeout_latched_ = true;
-                }
-            }
+        const auto state = watchdog_->check (received_time);
+        if (state != watchdog_state_) {
+            RCLCPP_WARN (get_logger (), "Serial watchdog: %s", Watchdog::name (state));
+            watchdog_state_ = state;
         }
+        if (state != Watchdog::State::Ready) send_stop ();
+        if (state == Watchdog::State::FeedbackTimeout) close_serial ();
 
         publish_diagnostics ();
     }
@@ -427,18 +442,20 @@ class SerialMotorBridge : public rclcpp::Node {
         status.name        = "natto_robot_hardware/serial_motor_bridge";
         status.hardware_id = serial_path_;
 
-        const double command_age  = (current_time - last_command_time_).seconds ();
-        const double feedback_age = feedback_received_ ? (current_time - last_feedback_stamp_).seconds () : -1.0;
+        const auto   steady_time  = Watchdog::Clock::now ();
+        const auto   state        = watchdog_->check (steady_time);
+        const double command_age  = watchdog_->command_age (steady_time);
+        const double feedback_age = watchdog_->feedback_age (steady_time);
 
         if (!serial_connected_) {
             status.level   = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
             status.message = "Serial disconnected";
-        } else if (feedback_timeout_latched_) {
+        } else if (state == Watchdog::State::FeedbackTimeout) {
             status.level   = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
             status.message = "Feedback timeout";
-        } else if (command_age > static_cast<double> (timeout_ms_) / 1000.0) {
+        } else if (state != Watchdog::State::Ready) {
             status.level   = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-            status.message = "Command timeout";
+            status.message = Watchdog::name (state);
         } else {
             status.level   = diagnostic_msgs::msg::DiagnosticStatus::OK;
             status.message = "OK";
@@ -451,6 +468,8 @@ class SerialMotorBridge : public rclcpp::Node {
             status.values.push_back (key_value);
         };
 
+        add_value ("reconnect_attempts", std::to_string (reconnect_attempts_));
+        add_value ("watchdog_state", Watchdog::name (state));
         add_value ("connected", serial_connected_ ? "true" : "false");
         add_value ("command_age_sec", std::to_string (command_age));
         add_value ("feedback_age_sec", std::to_string (feedback_age));
@@ -544,8 +563,11 @@ class SerialMotorBridge : public rclcpp::Node {
     int64_t feedback_timeout_ms_;
 
     bool feedback_received_{false};
-    bool feedback_timeout_latched_{false};
-    bool serial_connected_{false};
+    using Watchdog = natto_system_monitor::SerialWatchdog;
+    std::unique_ptr<Watchdog>                                  watchdog_;
+    std::unique_ptr<natto_system_monitor::SerialRestartPolicy> restart_policy_;
+    Watchdog::State                                            watchdog_state_{Watchdog::State::WaitingFeedback};
+    bool                                                       serial_connected_{false};
 
     std::vector<std::string> wheel_names_;
     std::vector<int64_t>     wheel_polarities_;
@@ -560,10 +582,10 @@ class SerialMotorBridge : public rclcpp::Node {
     std::array<double, 4> last_open_loop_outputs_{};
     double                last_position_rad_[4]{};
 
-    rclcpp::Time last_command_time_;
-    rclcpp::Time last_feedback_time_;
-    rclcpp::Time last_feedback_stamp_;
-    rclcpp::Time last_reconnect_attempt_;
+    rclcpp::Time   last_command_time_;
+    rclcpp::Time   last_feedback_stamp_;
+    Watchdog::Time last_reconnect_attempt_;
+    uint64_t       reconnect_attempts_{0};
 
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr        command_sub_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr           joint_state_pub_;

@@ -7,9 +7,11 @@
 #include "SerialBridge.hpp"
 
 #include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <stdexcept>
 using std::placeholders::_1;
 
 // 2台のマイコンは、それぞれ別のUSBシリアルポートを使用する。
@@ -51,28 +53,90 @@ SerialNode::SerialNode (const std::string &node_name, const char port[], Mechani
     con.data = MotorCommandPacket{};  // 初期化
     fb.data  = MotorFeedbackPacket{};
 
-    const auto serial_path = declare_parameter<std::string> ("serial_path", port);
-    RCLCPP_INFO (get_logger (), "Opening serial device: %s", serial_path.c_str ());
-    serial_diagnostics_ = std::make_unique<natto_system_monitor::SerialDiagnostics> (this, serial_path);
-    serial_dev          = new natto_system_monitor::ObservedSerial<LinuxHardwareSerial> (serial_path.c_str (), baud_rate, *serial_diagnostics_);
-    serial              = new SerialBridge (serial_dev, 1024);
+    serial_path_           = declare_parameter<std::string> ("serial_path", port);
+    baud_rate_             = baud_rate;
+    reconnect_interval_ms_ = declare_parameter<int64_t> ("reconnect_interval_ms", 1000);
+    if (reconnect_interval_ms_ <= 0) throw std::invalid_argument ("reconnect_interval_ms must be positive");
+    const auto command_timeout = std::chrono::milliseconds (declare_parameter<int64_t> ("timeout_ms", 300));
+    const bool monitor_updates = declare_parameter<bool> ("monitor_serial_updates", false);
+    const int  failure_limit   = declare_parameter<int> ("serial_update_failure_limit", 5);
+    if (failure_limit < 1) throw std::invalid_argument ("serial_update_failure_limit must be positive");
+    watchdog_ = monitor_updates ? std::make_unique<Watchdog> (command_timeout, failure_limit) : std::make_unique<Watchdog> (command_timeout);
+    RCLCPP_INFO (get_logger (), "Serial receive monitoring: %s", monitor_updates ? "enabled" : "disabled (send-only)");
+    restart_policy_ = std::make_unique<natto_system_monitor::SerialRestartPolicy> (
+        declare_parameter<bool> ("auto_restart", false), declare_parameter<int> ("restart_failure_count", 1), std::chrono::milliseconds (declare_parameter<int64_t> ("restart_timeout_ms", 1000)),
+        std::chrono::milliseconds (declare_parameter<int64_t> ("restart_recovery_ms", 3000)));
+    serial_diagnostics_ = std::make_unique<natto_system_monitor::SerialDiagnostics> (this, serial_path_);
+    serial_diagnostics_->observe_watchdog (watchdog_.get ());
+    watchdog_->reset (Watchdog::Clock::now ());
 
     subscription_ = this->create_subscription<sensor_msgs::msg::Joy> ("inject/joy", 10, std::bind (&SerialNode::joy_callback, this, _1));
 
     publisher_ = this->create_publisher<std_msgs::msg::Float32MultiArray> (feedback_topic, 10);
 
-    serial->add_frame (0, &con);
-    serial->add_frame (1, &fb);
-    // serial->add_frame(2, &gain);
+    try_open_serial ();
 
     // タイマーの設定（シリアル通信）
     timer_ = this->create_wall_timer (10ms, std::bind (&SerialNode::serial_callback, this));
 }
 
+SerialNode::~SerialNode () {
+    send_stop ();
+    close_serial ();
+}
+
+void SerialNode::close_serial () {
+    // SerialBridge keeps a pointer to the port, so destroy it first.
+    serial.reset ();
+    serial_dev.reset ();
+    serial_diagnostics_->opened (-1);
+    last_reconnect_attempt_ = Watchdog::Clock::now ();
+    con.data                = MotorCommandPacket{};
+}
+
+bool SerialNode::try_open_serial () {
+    close_serial ();
+    serial_diagnostics_->reconnect_attempt (++reconnect_attempts_);
+    try {
+        serial_dev = std::make_unique<SerialPort> (serial_path_.c_str (), baud_rate_, *serial_diagnostics_);
+        serial     = std::make_unique<SerialBridge> (serial_dev.get (), 1024);
+        con.data   = MotorCommandPacket{};
+        fb.data    = MotorFeedbackPacket{};
+        con.was_updated ();
+        fb.was_updated ();
+        serial->add_frame (0, &con);
+        serial->add_frame (1, &fb);
+        watchdog_->reset (Watchdog::Clock::now ());
+        watchdog_state_ = watchdog_->check (Watchdog::Clock::now ());
+        if (!write_command ()) {
+            throw std::runtime_error ("failed to send the initial zero command");
+        }
+        RCLCPP_INFO (get_logger (), "Serial connection established: %s", serial_path_.c_str ());
+        return true;
+    } catch (const std::exception &e) {
+        RCLCPP_ERROR (get_logger (), "Serial connection failed: %s: %s", serial_path_.c_str (), e.what ());
+    } catch (...) {
+        RCLCPP_ERROR (get_logger (), "Serial connection failed: %s: unknown error", serial_path_.c_str ());
+    }
+    close_serial ();
+    return false;
+}
+
+void SerialNode::send_stop () {
+    for (auto &motor : con.data.mc) motor.target_wheel_rps = 0.0f;
+    write_command ();
+}
+
 void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
+    if (!serial) {
+        // Commands received while disconnected must not survive reconnection.
+        send_stop ();
+        return;
+    }
     if (mechanism_ == Mechanism::Inject) {
         if (msg->buttons.size () <= 12) {
             RCLCPP_WARN (this->get_logger (), "Joy message has too few buttons for the inject mechanism");
+            send_stop ();
             return;
         }
 
@@ -97,6 +161,7 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
     } else {
         if (msg->axes.size () <= 7) {
             RCLCPP_WARN (this->get_logger (), "Joy message has too few axes for the roll mechanism");
+            send_stop ();
             return;
         }
         ly = msg->axes[1];
@@ -116,59 +181,103 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
         con.data.mc[3].target_wheel_rps = rx * 0.3f;
     }
 
-    errno                  = 0;
-    const int write_result = serial->write (0);
-    const int write_errno  = errno;
-    if (write_result < 0) {
-        RCLCPP_ERROR_THROTTLE (this->get_logger (), *this->get_clock (), 1000, "Serial write failed: write=%d errno=%d (%s)", write_result, write_errno, write_errno ? std::strerror (write_errno) : "No OS error; check registered SerialBridge frame");
+    bool neutral = true;
+    for (const auto &motor : con.data.mc) {
+        if (!std::isfinite (motor.target_wheel_rps)) {
+            RCLCPP_WARN (get_logger (), "Joy command contains a non-finite motor target");
+            send_stop ();
+            return;
+        }
+        neutral = neutral && motor.target_wheel_rps == 0.0f;
+    }
+    if (!watchdog_->command (Watchdog::Clock::now (), neutral)) {
+        send_stop ();
         return;
     }
+    write_command ();
+}
 
-    RCLCPP_INFO (this->get_logger (), "write=%d command=[%.3f %.3f %.3f %.3f]", write_result, con.data.mc[0].target_wheel_rps, con.data.mc[1].target_wheel_rps, con.data.mc[2].target_wheel_rps, con.data.mc[3].target_wheel_rps);
+bool SerialNode::write_command () {
+    if (!serial) return false;
+    if (watchdog_->check (Watchdog::Clock::now ()) != Watchdog::State::Ready) {
+        for (auto &motor : con.data.mc) motor.target_wheel_rps = 0.0f;
+    }
+    try {
+        errno                  = 0;
+        const int write_result = serial->write (0);
+        const int write_errno  = errno;
+        if (write_result == con.size () + 3) return true;
+        RCLCPP_ERROR (get_logger (), "Serial write failed: write=%d errno=%d (%s)", write_result, write_errno, write_errno ? std::strerror (write_errno) : "Short write or unregistered SerialBridge frame");
+    } catch (const std::exception &e) {
+        RCLCPP_ERROR (get_logger (), "Serial write failed: %s", e.what ());
+    } catch (...) {
+        RCLCPP_ERROR (get_logger (), "Serial write failed with an unknown error");
+    }
+    close_serial ();
+    return false;
 }
 
 void SerialNode::serial_callback () {
+    // Observe the result of this cycle before deciding on a process restart.
+    const auto observe_restart = [this] {
+        const auto time    = Watchdog::Clock::now ();
+        const auto state   = watchdog_->check (time);
+        const bool healthy = serial != nullptr && state != Watchdog::State::WaitingUpdate && state != Watchdog::State::UpdateError;
+        if (restart_policy_->observe (time, healthy)) {
+            RCLCPP_ERROR (get_logger (), "Persistent serial communication failure: requesting process restart");
+            send_stop ();
+            close_serial ();
+            rclcpp::shutdown ();
+        }
+    };
+    if (!serial) {
+        if (Watchdog::Clock::now () - last_reconnect_attempt_ >= std::chrono::milliseconds (reconnect_interval_ms_)) {
+            try_open_serial ();
+        }
+        observe_restart ();
+        return;
+    }
+    int update_result = -1;
     try {
-        serial->update ();
+        update_result = serial->update ();
     } catch (const std::exception &e) {
         RCLCPP_ERROR (this->get_logger (), "Serial update failed: %s", e.what ());
+        send_stop ();
+        close_serial ();
+        observe_restart ();
         return;
     } catch (...) {
         RCLCPP_ERROR (this->get_logger (), "Serial update failed with an unknown error");
+        send_stop ();
+        close_serial ();
+        observe_restart ();
         return;
     }
 
-    // was_updated() clears the update flag, so call it exactly once per cycle.
-    const bool feedback_updated = fb.was_updated ();
-
-    // RCLCPP_INFO(
-    //   this->get_logger(),
-    //   "update=%d updated=%d ",
-    //   result,
-    //   static_cast<int>(feedback_updated),
-    //   // fb.data.mfd[0].measured_wheel_rps,
-    //   // fb.data.mfd[1].measured_wheel_rps,
-    //   // fb.data.mfd[2].measured_wheel_rps,
-    //   // fb.data.mfd[3].measured_wheel_rps
-    // );
-
-    std_msgs::msg::Float32MultiArray msg;
-    msg.data.resize (4);
-
-    for (std::size_t i = 0; i < 4; ++i) {
-        msg.data[i] = fb.data.mfd[i].measured_wheel_rps;
+    // Optional receive monitoring; send-only devices may never return a frame.
+    const bool feedback_updated = update_result == 0 && fb.was_updated ();
+    const auto time             = Watchdog::Clock::now ();
+    if (watchdog_->uses_update_results ())
+        watchdog_->update_result (time, update_result);
+    else if (feedback_updated)
+        watchdog_->feedback (time);
+    const auto state = watchdog_->check (time);
+    if (state != watchdog_state_) {
+        RCLCPP_WARN (get_logger (), "Serial watchdog: %s", Watchdog::name (state));
+        watchdog_state_ = state;
+    }
+    if (state != Watchdog::State::Ready) send_stop ();
+    if (state == Watchdog::State::UpdateError) {
+        RCLCPP_WARN (get_logger (), "serial.update()=%d for %d consecutive failures; reconnecting", update_result, watchdog_->update_failures ());
+        close_serial ();
     }
 
     if (feedback_updated) {
-        // std_msgs::msg::Float32MultiArray msg;
-        // msg.data.resize(4);
-
-        // for (std::size_t i = 0; i < 4; ++i) {
-        //   msg.data[i] = fb.data.mfd[i].measured_wheel_rps;
-        // }
-
+        std_msgs::msg::Float32MultiArray msg;
+        for (const auto &motor : fb.data.mfd) msg.data.push_back (motor.measured_wheel_rps);
         publisher_->publish (msg);
     }
+    observe_restart ();
 }
 
 void SerialNode::gain_setup () const {}

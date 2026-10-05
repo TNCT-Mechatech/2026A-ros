@@ -99,3 +99,11 @@ def test_custom_ports_and_recording_are_forwarded(tmp_path):
     assert values['roll.device'] == '/dev/test_roll'
     assert values['mecanum.device'] == '/dev/test_mecanum'
     assert any(command[:3] == ['ros2', 'bag', 'record'] and str(tmp_path / 'trial') in command for command in commands)
+
+
+@pytest.mark.parametrize('variant', ['mecanum_auto.launch.xml', 'mecanum_auto_red.launch.xml', 'mecanum_auto_blue.launch.xml'])
+@pytest.mark.parametrize('enabled', [True, False])
+def test_auto_serial_restart_parameter_reaches_both_processes(variant, enabled):
+    commands = expand(variant, {'auto_serial_restart': str(enabled).lower()})
+    for package, name in [('inject2026A', 'main'), ('natto_robot_hardware', 'serial_motor_bridge')]:
+        assert parameters(executable(commands, package, name)[0])['auto_restart'] is enabled

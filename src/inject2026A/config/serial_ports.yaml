@@ -1,9 +1,29 @@
 inject_serial_node:
   ros__parameters:
+    reconnect_interval_ms: 1000
+    timeout_ms: 300
+    # マイコンから返信が来ない構成。Joy途絶と入出力エラーのみ監視。
+    monitor_serial_updates: false
+    # monitor_serial_updates=trueのときだけ使用。
+    serial_update_failure_limit: 5
+    # 自動launchで有効化。1秒ごとの失敗回数と継続時間を両方満たしたら再起動。
+    restart_failure_count: 1
+    restart_timeout_ms: 1000
+    restart_recovery_ms: 3000
     # 注入用ST-Link。USBの接続位置には依存しません。
     serial_path: "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF505071655067254019-if02"
 
 roll_serial_node:
   ros__parameters:
+    reconnect_interval_ms: 1000
+    timeout_ms: 300
+    # マイコンから返信が来ない構成。Joy途絶と入出力エラーのみ監視。
+    monitor_serial_updates: false
+    # monitor_serial_updates=trueのときだけ使用。
+    serial_update_failure_limit: 5
+    # 自動launchで有効化。1秒ごとの失敗回数と継続時間を両方満たしたら再起動。
+    restart_failure_count: 1
+    restart_timeout_ms: 1000
+    restart_recovery_ms: 3000
     # ロール用ST-Link。USBの接続位置には依存しません。
     serial_path: "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF555185754867214745-if02"

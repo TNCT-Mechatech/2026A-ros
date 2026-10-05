@@ -2,6 +2,7 @@
     <!-- Generic launch keeps opt-in defaults; auto entry points enable these. -->
     <arg name="launch_inject" default="false" description="Start both inject and roll nodes via inject2026A"/>
     <arg name="inject_serial_config" default="$(find-pkg-share inject2026A)/config/serial_ports.yaml"/>
+    <arg name="inject_auto_restart" default="false"/>
     <arg name="inject_joy_topic" default="/inject/joy"/>
     <arg name="monitor_mecanum_device" default=""/>
     <arg name="launch_system_monitor" default="false"/>
@@ -96,6 +97,7 @@
     <include file="$(find-pkg-share inject2026A)/launch/inject.launch.xml" if="$(var launch_inject)">
         <arg name="serial_config" value="$(var inject_serial_config)"/>
         <arg name="joy_topic" value="$(var inject_joy_topic)"/>
+        <arg name="auto_restart" value="$(var inject_auto_restart)"/>
     </include>
 
     <include file="$(find-pkg-share natto_system_monitor)/launch/monitor.launch.py" if="$(eval &quot;'$(var launch_system_monitor)'.lower() == 'true' or '$(var record)'.lower() == 'true'&quot;)">
