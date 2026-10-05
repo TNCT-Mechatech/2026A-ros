@@ -1,5 +1,6 @@
 #pragma once
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <natto_system_monitor/serial_watchdog.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <fcntl.h>
@@ -26,6 +27,12 @@ class SerialDiagnostics {
     }
     void opened (int fd) {
         fd_ = fd;
+    }
+    void reconnect_attempt (uint64_t count) {
+        reconnect_attempts_ = count;
+    }
+    void observe_watchdog (SerialWatchdog *watchdog) {
+        watchdog_ = watchdog;
     }
     void write_result (int result, unsigned int length, int error) {
         const auto time = std::chrono::steady_clock::now ();
@@ -56,6 +63,21 @@ class SerialDiagnostics {
         const int  result       = open ? poll (&descriptor, 1, 0) : -1;
         const bool disconnected = result > 0 && (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL));
         const bool idle         = success_ + failure_ == 0 || age (last_write_) > idle_sec_;
+        const auto state        = watchdog_ ? watchdog_->check (time) : SerialWatchdog::State::Ready;
+        if (watchdog_) {
+            s.add ("watchdog_state", SerialWatchdog::name (state));
+            s.add ("receive_monitoring", watchdog_->requires_feedback ());
+            if (watchdog_->uses_update_results ()) {
+                s.add ("serial_update_result", watchdog_->last_update_result ());
+                s.add ("serial_update_failure_count", watchdog_->update_failures ());
+                s.add ("serial_update_failure_limit", watchdog_->update_failure_limit ());
+                s.add ("serial_update_age_sec", watchdog_->feedback_age (time));
+            } else {
+                s.add ("feedback_age_sec", watchdog_->feedback_age (time));
+            }
+            s.add ("command_age_sec", watchdog_->command_age (time));
+        }
+        s.add ("reconnect_attempts", reconnect_attempts_);
         s.add ("device", path_);
         s.add ("port_open", open);
         s.add ("port_disconnected", disconnected);
@@ -68,24 +90,29 @@ class SerialDiagnostics {
         s.add ("last_write_error", last_errno_ ? std::strerror (last_errno_) : (last_result_ >= 0 && static_cast<unsigned int> (last_result_) < expected_bytes_ ? "short write" : "none"));
         s.add ("last_success_ros_sec", std::to_string (last_success_ros_));
         s.add ("last_success_age_sec", success_ ? age (last_success_) : -1.0);
-        s.add ("operational_state", !open || disconnected ? "STOPPED" : idle ? "IDLE" : "RUNNING");
+        s.add ("operational_state", !open || disconnected || state != SerialWatchdog::State::Ready ? "STOPPED" : idle ? "IDLE" : "RUNNING");
         if (!open || disconnected)
             s.summary (H::ERROR, "Serial port unavailable/disconnected");
         else if (result < 0)
             s.summary (H::STALE, "Unable to inspect serial port state");
+        else if (state == SerialWatchdog::State::FeedbackTimeout || state == SerialWatchdog::State::UpdateError)
+            s.summary (H::ERROR, SerialWatchdog::name (state));
         else if (consecutive_ >= static_cast<uint64_t> (error_limit_))
             s.summary (H::ERROR, "Repeated serial write failures");
+        else if (state != SerialWatchdog::State::Ready)
+            s.summary (H::WARN, SerialWatchdog::name (state));
         else if (consecutive_ > 0 || (failure_ && age (last_failure_) < recovery_sec_))
             s.summary (H::WARN, "Transient serial write failure");
         else
             s.summary (H::OK, "Serial port open; writes healthy (not a firmware acknowledgement)");
     }
     rclcpp::Node                         *node_;
+    SerialWatchdog                       *watchdog_ = nullptr;
     std::string                           path_;
     diagnostic_updater::Updater           updater_;
     int                                   fd_ = -1, error_limit_ = 3, last_result_ = 0, last_errno_ = 0;
     unsigned int                          expected_bytes_ = 0;
-    uint64_t                              success_ = 0, failure_ = 0, consecutive_ = 0;
+    uint64_t                              success_ = 0, failure_ = 0, consecutive_ = 0, reconnect_attempts_ = 0;
     double                                recovery_sec_ = 2, idle_sec_ = 1, last_success_ros_ = 0;
     std::chrono::steady_clock::time_point last_write_{}, last_success_{}, last_failure_{};
 };

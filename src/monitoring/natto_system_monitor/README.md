@@ -1,6 +1,6 @@
 # natto_system_monitor
 
-ROS 2 Jazzy / C++の受動監視。既存制御topicへpublishせず、制御・経路探索・自己位置推定・Serial通信内容/周期を変更しない。全体構成の調査は[INVESTIGATION.md](INVESTIGATION.md)。
+ROS 2 Jazzy / C++の受動監視。既存制御topicへpublishせず、制御・経路探索・自己位置推定・Serial通信内容/周期を変更しない。共有の `serial_watchdog.hpp` は状態判定のみを提供し、タイムアウト時の停止送信は各制御ノードが行う。全体構成の調査は[INVESTIGATION.md](INVESTIGATION.md)。
 
 ## 起動
 
@@ -117,9 +117,9 @@ Foxglove Extensionはこの変更では編集していない。ROS側で判定�
 
 ## Serialの限界
 
-write成功はOSへの全バイトwrite成功を意味し、機構の実動作/firmware ACKの証明ではない。短いwriteも失敗として数えるが再送しない。fdのopen状態とPOLLHUP/POLLERRを診断時に観測する。
+write成功はOSへの全バイトwrite成功を意味し、機構の実動作/firmware ACKの証明ではない。診断オブザーバーは短いwriteも失敗として数え、自身では再送しない。fdのopen状態とPOLLHUP/POLLERRを診断時に観測する。
 
-既存LinuxHardwareSerialのopen失敗によるexitを保持しているため、失敗したnode自身が継続的にERRORをpublishすることはできない。device欠落は外部device診断でERROR、node/診断の欠落はheartbeatでSTALEとなる。権限・baud設定等によるopen失敗のerrnoは既存stderrを確認する。inject側1プロセス内のどちらかのopen失敗は既存どおり両nodeに影響する。自動再接続は追加していない。
+注入・ロール・足回りは、受信タイムアウトやI/Oエラーでポートを閉じ、既定1秒間隔で再接続する。open・設定失敗も例外として処理し、ノードを終了せずERROR診断を継続する。機構ごとの再接続は独立し、`reconnect_attempts` で初回を含む接続試行回数を確認できる。ポートを閉じた時点で診断用fdも無効化する。再接続処理と停止送信は各制御ノードが担当する。
 
 ## 変更ファイル
 
@@ -130,7 +130,7 @@ write成功はOSへの全バイトwrite成功を意味し、機構の実動作/f
 
 `colcon test --packages-select natto_system_monitor`で内容検査と単調時計・集約優先度を検証する。追加のintegration testはsequence/buttonsの正常・低周期・不正・途絶・復旧・IDLEと集約を検証する。Serial observer単体テストはpartial write/WARN/ERROR/復旧と呼出回数・引数・errno保持を検証する。
 
-機構packageをビルドした後に`python3 src/monitoring/natto_system_monitor/test/test_serial_pty.py`で疑似端末に対するinject/rollの実行試験を行える。Pure Pursuitをビルド後に`python3 src/monitoring/natto_system_monitor/test/test_pursuit_debug.py`でdebug有効/無効の出力一致を検証できる。DDS domain 194/196/197/198をテスト専用に使う。実機のUSB抜去・負荷を伴う30Hz/50Hz運転は別途試走確認が必要。
+機構packageをビルドした後に`python3 src/monitoring/natto_system_monitor/test/test_serial_pty.py`で疑似端末に対するinject/roll/足回りの実行試験を行える。Pure Pursuitをビルド後に`python3 src/monitoring/natto_system_monitor/test/test_pursuit_debug.py`でdebug有効/無効の出力一致を検証できる。DDS domain 194/196/197/198をテスト専用に使う。実機のUSB抜去・負荷を伴う30Hz/50Hz運転は別途試走確認が必要。
 
 既存package名inject2026Aの命名警告は残る。
 
@@ -148,3 +148,27 @@ write成功はOSへの全バイトwrite成功を意味し、機構の実動作/f
 - Python/YAML/XML構文検査とgit diff --check成功。
 
 このマシンではros-jazzy-rslが欠けており、sudoがパスワードを要求するためシステムへの導入は未実施。Graph起動試験は公式debを/tmpへ展開し、そのライブラリパスを当該試験プロセスにだけ設定して実施した。通常起動前に `sudo apt install ros-jazzy-rsl` が必要。実機接続・走行での検証は行っていない。
+
+## シリアル受信タイムアウトの検証
+
+注入・ロール・足回りの各ノードは `serial_watchdog.hpp` で受信／指令期限を判定します。
+注入・ロールの `Hardware/Serial` 診断にも `watchdog_state`、`feedback_age_sec`、
+`command_age_sec` を追加しています。停止・復帰条件と設定は各ノードのREADMEを参照してください。
+診断オブザーバー単体は送信しませんが、制御ノードは起動直後・停止中にゼロ指令を周期送信します。
+
+```bash
+colcon test --packages-select natto_system_monitor --ctest-args -R 'test_serial_(watchdog|observer)'
+# 3パッケージをビルドし、install/setup.bashをsourceしてから実行
+/usr/bin/python3 src/monitoring/natto_system_monitor/test/test_serial_pty.py
+```
+
+PTYテストは実機デバイスを開かず、3系統で初回未受信、途中途絶、不正パケット、
+系統ごとの独立停止、停止中の指令抑止、復帰、指令途絶、起動時未接続、
+3系統の抜去・再接続、繰り返し接続時のfd数を確認します。
+
+
+長時間の通信不良に対する再実行判定は `serial_restart.hpp` にあり、
+`test_serial_restart` で回数・時間の両条件、短い復旧の扱い、正常継続による履歴消去を確認します。
+PTYテストには実際のlaunchによる再実行も含まれ、短期通信断の除外、長期通信断後のPID変更、
+再実行後のニュートラル待ち、指令途絶だけでは再実行しないことを検証します。
+再実行は自動launchで既定有効です。閾値と無効化方法は各通信ノードのREADMEを参照してください。

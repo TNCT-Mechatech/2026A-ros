@@ -3,6 +3,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include <natto_system_monitor/serial_diagnostics.hpp>
+#include <natto_system_monitor/serial_restart.hpp>
 
 #include <termios.h>  // speed_t
 
@@ -15,6 +16,7 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 
 // Serial massages（メンバに持つので完全型が必要）
+#include "LinuxHardwareSerial.hpp"
 #include "Message.hpp"
 #include "serial_packets.hpp"
 
@@ -32,20 +34,35 @@ enum class Mechanism {
 class SerialNode : public rclcpp::Node {
    public:
     SerialNode (const std::string &node_name, const char port[], Mechanism mechanism, const std::string &feedback_topic, speed_t baud_rate = B230400);
+    ~SerialNode () override;
 
    private:
     void joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg);
     void serial_callback ();
+    bool write_command ();
+    bool try_open_serial ();
+    void close_serial ();
+    void send_stop ();
     void gain_setup () const;
 
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr         subscription_;
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr publisher_;  // Publisher の宣言
     rclcpp::TimerBase::SharedPtr                                   timer_;
 
-    SerialDev                                               *serial_dev;
-    SerialBridge                                            *serial;
+    using SerialPort = natto_system_monitor::ObservedSerial<LinuxHardwareSerial>;
+    std::unique_ptr<SerialPort>                              serial_dev;
+    std::unique_ptr<SerialBridge>                            serial;
+    std::string                                              serial_path_;
+    speed_t                                                  baud_rate_;
+    int64_t                                                  reconnect_interval_ms_;
+    std::chrono::steady_clock::time_point                    last_reconnect_attempt_;
+    uint64_t                                                 reconnect_attempts_{0};
     std::unique_ptr<natto_system_monitor::SerialDiagnostics> serial_diagnostics_;
-    Mechanism                                                mechanism_;
+    using Watchdog = natto_system_monitor::SerialWatchdog;
+    std::unique_ptr<Watchdog>                                  watchdog_;
+    std::unique_ptr<natto_system_monitor::SerialRestartPolicy> restart_policy_;
+    Watchdog::State                                            watchdog_state_{Watchdog::State::WaitingUpdate};
+    Mechanism                                                  mechanism_;
 
     sb::Message<MotorCommandPacket>  con;
     sb::Message<MotorFeedbackPacket> fb;

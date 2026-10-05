@@ -13,6 +13,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(debug_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(natto_system_monitor REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 set(SERIAL_BRIDGE_DIR ${CMAKE_CURRENT_LIST_DIR}/../../SerialBridge)
@@ -23,9 +24,14 @@ if(NOT EXISTS ${SERIAL_BRIDGE_DIR}/src/SerialBridge.hpp)
   message(FATAL_ERROR "SerialBridge.hpp not found: ${SERIAL_BRIDGE_DIR}/src/SerialBridge.hpp")
 endif()
 
-if(NOT EXISTS ${SERIAL_BRIDGE_DIR}/bin/libSerialBridge.a)
-  message(FATAL_ERROR "libSerialBridge.a not found: ${SERIAL_BRIDGE_DIR}/bin/libSerialBridge.a")
-endif()
+add_library(serial_bridge_transport STATIC
+  ${SERIAL_BRIDGE_DIR}/src/source/LinuxHardwareSerial.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/SerialBridge.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/CobsSerial.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/Message.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/cobs.cpp
+)
+target_compile_features(serial_bridge_transport PRIVATE cxx_std_17)
 
 add_executable(serial_motor_bridge
   src/serial_motor_bridge.cpp
@@ -45,10 +51,11 @@ ament_target_dependencies(serial_motor_bridge
   std_msgs
   debug_msgs
   diagnostic_msgs
+  natto_system_monitor
 )
 
 target_link_libraries(serial_motor_bridge
-  ${SERIAL_BRIDGE_DIR}/bin/libSerialBridge.a
+  serial_bridge_transport
   yaml-cpp
 )
 

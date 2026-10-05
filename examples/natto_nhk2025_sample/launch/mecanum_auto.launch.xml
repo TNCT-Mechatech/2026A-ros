@@ -1,4 +1,5 @@
 <launch>
+    <arg name="auto_serial_restart" default="true" description="Restart serial processes after persistent communication failure"/>
     <!-- Auto operation, monitoring and mechanisms share this entry point. -->
     <arg name="launch_inject" default="true" description="Start both inject and roll nodes via inject2026A"/>
     <arg name="inject_serial_config" default="$(find-pkg-share inject2026A)/config/serial_ports.yaml"/>
@@ -80,6 +81,7 @@
         <arg name="launch_inject" value="$(var launch_inject)"/>
         <arg name="inject_serial_config" value="$(var inject_serial_config)"/>
         <arg name="inject_joy_topic" value="$(var inject_joy_topic)"/>
+        <arg name="inject_auto_restart" value="$(var auto_serial_restart)"/>
         <arg name="monitor_mecanum_device" value="$(var serial_path)"/>
         <arg name="navigation_mode" value="$(var navigation_mode)"/>
         <arg name="destinations_path" value="$(var destinations_path)"/>
@@ -116,8 +118,11 @@
       pkg="natto_robot_hardware"
       exec="serial_motor_bridge"
       name="serial_motor_bridge"
+      respawn="$(var auto_serial_restart)"
+      respawn_delay="0.0"
       output="screen">
       <param from="$(find-pkg-share natto_robot_hardware)/config/serial_motor_bridge.yaml"/>
+      <param name="auto_restart" value="$(var auto_serial_restart)"/>
       <param name="serial_path" value="$(var serial_path)"/>
       <param name="gain_config_path" value="$(var gain_config_path)" type="str"/>
     </node>

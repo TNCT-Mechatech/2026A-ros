@@ -1,9 +1,11 @@
 <launch>
+  <arg name="auto_restart" default="false"/>
   <arg name="serial_config" default="$(find-pkg-share inject2026A)/config/serial_ports.yaml"/>
   <arg name="joy_topic" default="/inject/joy"/>
   <!-- main内のinject_serial_nodeとroll_serial_nodeの名前を維持します。 -->
-  <node pkg="inject2026A" exec="main" output="screen">
+  <node pkg="inject2026A" exec="main" output="screen" respawn="$(var auto_restart)" respawn_delay="0.0">
     <param from="$(var serial_config)"/>
+    <param name="auto_restart" value="$(var auto_restart)"/>
     <remap from="inject/joy" to="$(var joy_topic)"/>
   </node>
 </launch>

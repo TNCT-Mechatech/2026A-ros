@@ -18,7 +18,15 @@ find_package(rosidl_default_generators REQUIRED)
 ###############
 # Add Serialbridge
 set(SERIAL_BRIDGE_DIR "${CMAKE_SOURCE_DIR}/SerialBridge")
-find_library(SERIAL_BRIDGE_LIB NAMES SerialBridge PATHS "${SERIAL_BRIDGE_DIR}/bin")
+add_library(serial_bridge_transport STATIC
+  ${SERIAL_BRIDGE_DIR}/src/source/LinuxHardwareSerial.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/SerialBridge.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/CobsSerial.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/Message.cpp
+  ${SERIAL_BRIDGE_DIR}/src/source/cobs.cpp
+)
+target_compile_features(serial_bridge_transport PRIVATE cxx_std_17)
+
 
 ###############
 # include custom header files
@@ -48,7 +56,7 @@ foreach(node ${node_list})
     "${std_msgs_INCLUDE_DIRS}"
   )
   target_link_libraries(${node}
-    "${SERIAL_BRIDGE_LIB}"
+    serial_bridge_transport
     "${rclcpp_LIBRARIES}"
     "${std_msgs_LIBRARIES}"
   )
