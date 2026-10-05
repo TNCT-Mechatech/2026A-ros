@@ -9,7 +9,7 @@ destinations:
     label: バケツ3ねらい
     x: 4.58
     y: 7.77
-    yaw_deg: 152.4
+    yaw_deg: 154.0
   home:
     label: 帰還
     x: 3.72

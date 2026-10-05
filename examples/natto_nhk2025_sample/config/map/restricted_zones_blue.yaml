@@ -7,6 +7,8 @@
       - flag
       - bucket_1
       - refill_area
+      - bucket_2_wall_gap
+      - bucket_3_wall_gap
 
     restricted_zones.table_1.points:
       - 3.81
@@ -85,3 +87,29 @@
 
     restricted_zones.refill_area.lidar_ignore: true
     restricted_zones.refill_area.keepout: true
+
+    # 固定バケツ2・3と教壇（相手チーム側の壁）の間の1000 mmを塞ぐ。
+    # 壁の反射点は自己位置推定に使うため、LiDAR無視は無効。
+    restricted_zones.bucket_2_wall_gap.points:
+      - 1.00
+      - 2.70
+      - 0.00
+      - 2.70
+      - 0.00
+      - 3.06
+      - 1.00
+      - 3.06
+    restricted_zones.bucket_2_wall_gap.lidar_ignore: false
+    restricted_zones.bucket_2_wall_gap.keepout: true
+
+    restricted_zones.bucket_3_wall_gap.points:
+      - 1.00
+      - 6.34
+      - 0.00
+      - 6.34
+      - 0.00
+      - 6.70
+      - 1.00
+      - 6.70
+    restricted_zones.bucket_3_wall_gap.lidar_ignore: false
+    restricted_zones.bucket_3_wall_gap.keepout: true
