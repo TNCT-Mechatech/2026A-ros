@@ -90,7 +90,7 @@ protected:
     };
 
     uint8_t *_all_packet;
-    volatile bool _unpacked;
+    volatile bool _unpacked = false;
 };
 
 

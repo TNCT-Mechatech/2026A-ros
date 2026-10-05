@@ -28,6 +28,12 @@ class ring_queue {
         _begin = _num = 0;
     }
 
+    ~ring_queue () {
+        delete[] _queue;
+    }
+    ring_queue (const ring_queue &)            = delete;
+    ring_queue &operator= (const ring_queue &) = delete;
+
     /**
      * @brief A function that adds an element to the end of a queue.
      * @param[in] value Element to add.
@@ -115,7 +121,7 @@ class CobsSerial {
 
     ring_queue<uint8_t> _rx_buffer;
     bool                _got_packet;
-    bool                _data_begin;
+    bool                _data_begin = false;
 };
 
 #endif  // #ifndef _COBS_SERIAL_HPP_

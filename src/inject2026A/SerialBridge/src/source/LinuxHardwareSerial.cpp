@@ -9,6 +9,8 @@
 
 #include "../LinuxHardwareSerial.hpp"
 
+#include <system_error>
+
 extern "C" {
 int fdwrite (int fd, unsigned char *data, unsigned int len) {
     return write (fd, data, len);
@@ -24,7 +26,9 @@ int fdread (int fd) {
 
 long fdtell (int fd) {
     int len = 0;
-    ioctl (fd, FIONREAD, &len);
+    if (ioctl (fd, FIONREAD, &len) < 0) {
+        throw std::system_error (errno, std::generic_category (), "serial FIONREAD");
+    }
     return len;
 }
 }
@@ -36,53 +40,28 @@ long fdtell (int fd) {
  *  (ex : B9600(9600 baudrate), B115200(115200 baudrate))
  */
 LinuxHardwareSerial::LinuxHardwareSerial (const char port[], speed_t baud_rate) {
-    int fd = open (port, O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK);
+    const int fd = open (port, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd < 0) {
-        perror ("Open port failed");
-        exit (EXIT_FAILURE);
+        throw std::system_error (errno, std::generic_category (), "open serial port");
     }
-    fcntl (fd, F_SETFL, FNDELAY);
-
-    tcgetattr (fd, &_oldtio);
-
-    struct termios tio;
-
-    tcgetattr (fd, &tio);
-    bzero (&tio, sizeof (tio));
-
-#ifdef __linux__
-    tio.c_cflag += CREAD;   // rx eable
-    tio.c_cflag += CLOCAL;  // local
-    tio.c_cflag += CS8;     // 8bit
-
-    tio.c_cflag += IGNPAR;
-    tio.c_cflag += IGNBRK;
-
+    // On every setup failure, release the fd before allowing the node to retry.
+    const auto fail = [fd] (const char *operation) {
+        const int error = errno;
+        close (fd);
+        throw std::system_error (error, std::generic_category (), operation);
+    };
+    if (tcgetattr (fd, &_oldtio) < 0) fail ("tcgetattr");
+    struct termios tio = _oldtio;
+    cfmakeraw (&tio);
+    tio.c_cflag &= ~(CSIZE | PARENB | CSTOPB | CRTSCTS);
+    tio.c_cflag |= CREAD | CLOCAL | CS8;
+    tio.c_iflag |= IGNPAR | IGNBRK;
     tio.c_cc[VTIME] = 0;
     tio.c_cc[VMIN]  = 0;
-#elif __APPLE__
-    tio.c_cflag |= (CLOCAL | CREAD | CS8);  // Configure the device : 8 bits, no parity, no control
-    tio.c_iflag |= (IGNPAR | IGNBRK);
-    tio.c_cc[VTIME] = 0;  // Timer unused
-    tio.c_cc[VMIN]  = 0;
-
-    tio.c_cc[VTIME] = 0;
-    tio.c_cc[VMIN]  = 0;
-#endif
-
-    cfsetispeed (&tio, baud_rate);
-    cfsetospeed (&tio, baud_rate);
-
-    cfmakeraw (&tio);  // raw mode
-
-    tcflush (fd, TCIFLUSH);
-    tcsetattr (fd, TCSANOW, &tio);
-#ifdef __linux__
-    ioctl (fd, TCSETS, &tio);
-#elif __APPLE__
-    ioctl (fd, TIOCSETA, &tio);
-#endif
-
+    if (cfsetispeed (&tio, baud_rate) < 0) fail ("cfsetispeed");
+    if (cfsetospeed (&tio, baud_rate) < 0) fail ("cfsetospeed");
+    if (tcsetattr (fd, TCSANOW, &tio) < 0) fail ("tcsetattr");
+    if (tcflush (fd, TCIOFLUSH) < 0) fail ("tcflush");
     _fd = fd;
 }
 

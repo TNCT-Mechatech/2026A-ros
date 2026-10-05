@@ -45,7 +45,7 @@ class SerialBridge {
     int _id_2_order (frame_id id);
     int _update_frame ();
 
-    sb::MessageInterface *_str[STRUCT_MAX_NUM];
+    sb::MessageInterface *_str[STRUCT_MAX_NUM]{};
     frame_id              _id_list[STRUCT_MAX_NUM];
 
     CobsSerial *_dev;
