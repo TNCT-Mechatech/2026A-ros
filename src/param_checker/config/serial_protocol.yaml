@@ -1,0 +1,17 @@
+param_check:
+  ros__parameters:
+    # Keep the original VRFT direct-duty measurement mode; pid=true uses velocity.
+    pid: false
+    timeout_ms: 300
+    stop_mode: false
+    # Defaults from STM main.cpp, to be verified against the actual wheel board.
+    encoder_ppr: [2048, 2048, 2048, 2048]
+    gear_rate: [40.833333333333333, 40.833333333333333, 40.833333333333333, 40.833333333333333]
+    encoder_polarities: [-1, -1, -1, -1]
+    max_motor_rps: [1.5, 1.5, 1.5, 1.5]
+    pos_kp: [0.0, 0.0, 0.0, 0.0]
+    pos_ki: [0.0, 0.0, 0.0, 0.0]
+    pos_kd: [0.0, 0.0, 0.0, 0.0]
+    reset_encoder_origin: [false, false, false, false]
+    reset_encoder_origin_with_switch: [false, false, false, false]
+    encoder_origin_switch_state: [true, true, true, true]

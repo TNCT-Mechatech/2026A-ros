@@ -33,8 +33,19 @@ serial_motor_bridge:
     restart_recovery_ms: 3000
     max_feedback_dt_sec: 0.1
 
-    command_frame_id: 0
-    feedback_frame_id: 1
+    # Fixed STM frame IDs are defined in serial_protocol.hpp.
+    # These encoder defaults come from STM main.cpp; verify the actual wheel gearboxes.
+    encoder_ppr: [2048, 2048, 2048, 2048]
+    gear_rate: [40.833333333333336, 40.833333333333336, 40.833333333333336, 40.833333333333336]
+    max_motor_rps: [4.0, 4.0, 4.0, 4.0]
+    stop_mode: false
+    pos_kp: [0.0, 0.0, 0.0, 0.0]
+    pos_ki: [0.0, 0.0, 0.0, 0.0]
+    pos_kd: [0.0, 0.0, 0.0, 0.0]
+    # Preserve cumulative counts across ROS reconnect; switch homing is opt-in.
+    reset_encoder_origin: [false, false, false, false]
+    reset_encoder_origin_with_switch: [false, false, false, false]
+    encoder_origin_switch_state: [true, true, true, true]
 
     wheel_names:
       - "mecanum_wheel_fl"
@@ -43,9 +54,10 @@ serial_motor_bridge:
       - "mecanum_wheel_rr"
 
     # wheel_namesと同じ順番。ROSの指令方向を実機モーターの極性へ変換します。
-    # マイコンへ送信する目標値に適用され、受信値には適用されません。
+    # 指令をSTMのモーター座標へ変換し、JointStateの速度・位置をROS座標へ戻します。
     wheel_polarities: [-1, 1, -1, 1]
 
-    # エンコーダの極性
+    # STM set_direction=(polarity < 0)へ変換。全輪で正のモーター出力と
+    # 測定速度の符号を合わせます。ROS座標変換用のwheel_polaritiesとは別です。
     # FL, FR, RL, RR
-    encoder_polarities: [-1, 1, -1, 1]
+    encoder_polarities: [-1, -1, -1, -1]

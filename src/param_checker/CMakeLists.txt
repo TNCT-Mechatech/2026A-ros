@@ -9,6 +9,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(debug_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(natto_robot_hardware REQUIRED)
 
@@ -41,17 +42,27 @@ target_compile_features(param_checker PRIVATE cxx_std_17)
 target_link_libraries(param_checker serial_bridge yaml-cpp)
 ament_target_dependencies(param_checker rclcpp sensor_msgs debug_msgs natto_robot_hardware)
 
+add_executable(position_checker src/position_main.cpp)
+target_include_directories(position_checker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(position_checker PRIVATE cxx_std_17)
+target_link_libraries(position_checker serial_bridge yaml-cpp)
+ament_target_dependencies(position_checker rclcpp sensor_msgs std_msgs debug_msgs natto_robot_hardware)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_position_vrft test/test_position_vrft.cpp)
+  target_include_directories(test_position_vrft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_compile_features(test_position_vrft PRIVATE cxx_std_17)
 endif()
 
-install(TARGETS param_checker
+install(TARGETS param_checker position_checker
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

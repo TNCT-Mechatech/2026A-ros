@@ -16,6 +16,8 @@
   <depend>diagnostic_msgs</depend>
   <depend>natto_system_monitor</depend>
 
+  <test_depend>ament_cmake_gtest</test_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>

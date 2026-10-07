@@ -105,3 +105,18 @@ USB切断やPC停止時は停止指令が届かないため、マイコン側に
 再実行後はニュートラル指令が必要で、以前の動作指令は引き継ぎません。
 注入・ロールは同一プロセスなので、どちらかの長時間不良で両方が再実行されます。
 足回りは別プロセスです。通信が戻らない間は1秒の判定期間ごとに再試行します（プロセスの終了・起動時間は別途かかります）。
+
+
+## STM個別フレーム通信への移行
+
+[通信移行報告](../../docs/stm_serial_migration.md)を参照してください。
+従来の注入/ロールのボタン・軸マッピングは維持し、PID無効の出力をID12〜15のsigned dutyに送ります。
+接続・再接続ごとにID0〜3のInitialization（pid_state=0）→Duty=0を送ります。
+共通SerialBridgeを使用し、ID0〜20すべての登録結果を検査します。
+ID16〜19の最新速度は従来のfb_speed_topicへ、ID20の4入力は
+`inject/switch_feedback` / `roll/switch_feedback` (`std_msgs/UInt8MultiArray`) へ公開します。
+受信は1回の10ms callbackでdrainし、そのバッチの正常/異常を既存watchdogに渡します。
+末尾の `-1` は正常なdrain終了なので、そのバッチの受信成功を上書きしません。
+`monitor_serial_updates=false` の既存send-only運用設定は維持しています。
+新STMの返信を監視する運用ではtrueを指定してください。
+エンコーダPPR・ギア比の設定値はSTM既定値であり、注入/ロール機構ごとに確認してください。

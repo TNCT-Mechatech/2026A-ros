@@ -77,4 +77,12 @@ install(DIRECTORY
 
 ament_export_include_directories(include)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_serial_protocol test/test_serial_protocol.cpp)
+  target_compile_features(test_serial_protocol PRIVATE cxx_std_17)
+  target_include_directories(test_serial_protocol PRIVATE include ${SERIAL_BRIDGE_DIR}/src)
+  target_link_libraries(test_serial_protocol serial_bridge_transport)
+endif()
+
 ament_package()

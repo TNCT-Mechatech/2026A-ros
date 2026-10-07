@@ -99,7 +99,7 @@ ros2 launch natto_nhk2025_sample mecanum_auto_red.launch.xml gain_config_path:=/
 
 `serial.update()` が `-1`（完全なフレーム未受信）、`-2`（不正パケット）、
 `-3`（未登録ID）でも、10ms周期で受信期限を確認します。
-正常なフィードバックフレームだけが最終受信時刻を更新します。
+ID16〜19の4モータすべての新しいフィードバックが揃うたびに最終受信時刻を更新します。
 送信成功や他IDのフレームでは受信期限を延長しません。
 判定には `steady_clock` を使用し、ROS時刻の停止・変更に依存しません。
 
@@ -152,3 +152,38 @@ USB切断やPC停止時は停止指令が届かないため、マイコン側に
 再実行後も正常受信とニュートラル指令が必要で、以前の動作指令は引き継ぎません。
 注入・ロールは同一プロセスなので、どちらかの長時間不良で両方が再実行されます。
 足回りは別プロセスです。通信が戻らない間は1秒の判定期間ごとに再試行します（プロセスの終了・起動時間は別途かかります）。
+
+
+## STM個別フレーム通信
+
+[通信移行の調査・設定・検証報告](../../docs/stm_serial_migration.md)を参照してください。
+固定IDとABIは `include/natto_robot_hardware/serial_protocol.hpp` に集約しています。
+接続・再接続時はID0〜3の初期化後、現在のモードで4モータへゼロ指令を送信します。
+速度モードはID4〜7（rps）、open-loopはID12〜15（signed duty）です。
+
+`encoder_polarities=-1` はSTMの `set_direction=true` に変換します。
+受信値へROS側で `encoder_polarities` を再度掛けません。`wheel_polarities` は
+送信指令とJointStateの速度・位置の座標変換に使います。debugの `feedback0`〜`feedback3` は
+STMのモーター座標のまま公開し、`target_rps` と `current_rps` を同じ符号で比較できます。
+
+メカナムの既定値は、FL/FR/RL/RRの順で `wheel_polarities=[-1,1,-1,1]`、
+`encoder_polarities=[-1,-1,-1,-1]` です。以前の全輪 `set_direction=true` と
+速度調整用YAMLに合わせ、STM内の正の出力に対して測定速度も正になるよう設定します。
+FR/RRを `encoder_polarities=1` にすると、逆符号の測定値でPIDが誤差を増幅し、
+逆回転・暴走する可能性があります。左右の車輪取り付け方向は `wheel_polarities` で変換します。
+反映にはbridgeの再ビルドとlaunchの再起動が必要です。初回は車輪を浮かせて低速で確認し、
+`feedback1`（FR）・`feedback3`（RR）の目標速度と測定速度が同符号になることを確認してください。
+位置は `encoder_raw_count / (encoder_ppr * 4 * gear_rate) * 2π` です。
+`max_feedback_dt_sec` は旧launch互換のため受理しますが、raw countには使用しません。
+速度・位置はwheel軸であり、STMの `target_motor_rps` というフィールド名でもCPRはgear_rate込みです。
+
+`encoder_ppr`、`gear_rate`、`max_motor_rps`、`pos_kp/ki/kd`、原点リセット設定は
+4要素のROSパラメータです。YAMLのPPR・ギア比はSTM既定値であり機体の校正値ではありません。
+`pid_state` はモードから決定し、velocity PIDのkp/kiは従来のPID gain YAMLから送ります。
+kdは従来の実機運用方針に合わせて常に0を送信し、YAMLの保存値は維持します。
+スイッチは `/switch_feedback` (`std_msgs/UInt8MultiArray`, motor0〜3、0/1) に公開します。
+`invalid_packets`、`unregistered_frames`、`drain_budget_hits` はdiagnosticsで確認できます。
+
+通常指令は `min(timeout_ms, 300ms)` より短い周期で継続してください。
+指令途絶はROSとSTMの二重停止になり、停止送信は現在のモードを維持します。
+STMの通信タイムアウト処理自体はpid=1・brakeへ切り替えるため、実機で復帰挙動を確認してください。
