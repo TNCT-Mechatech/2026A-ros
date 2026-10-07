@@ -2,7 +2,19 @@ inject_serial_node:
   ros__parameters:
     reconnect_interval_ms: 1000
     timeout_ms: 300
-    # マイコンから返信が来ない構成。Joy途絶と入出力エラーのみ監視。
+    # Encoder constructor defaults from STM; verify separately for inject and roll.
+    encoder_ppr: [2048, 2048, 2048, 2048]
+    gear_rate: [71.0, 40.833333333333336, 40.833333333333336, 40.833333333333336]
+    encoder_polarities: [1, 1, 1, 1]
+    max_motor_rps: [4.0, 4.0, 4.0, 4.0]
+    stop_mode: false
+    pos_kp: [0.0, 0.0, 0.0, 0.0]
+    pos_ki: [0.0, 0.0, 0.0, 0.0]
+    pos_kd: [0.0, 0.0, 0.0, 0.0]
+    reset_encoder_origin: [false, false, false, false]
+    reset_encoder_origin_with_switch: [false, false, false, false]
+    encoder_origin_switch_state: [true, true, true, true]
+    # 旧send-only運用設定を維持。新STMの返信監視にはtrueを指定。
     monitor_serial_updates: false
     # monitor_serial_updates=trueのときだけ使用。
     serial_update_failure_limit: 5
@@ -17,7 +29,19 @@ roll_serial_node:
   ros__parameters:
     reconnect_interval_ms: 1000
     timeout_ms: 300
-    # マイコンから返信が来ない構成。Joy途絶と入出力エラーのみ監視。
+    # Encoder constructor defaults from STM; verify separately for inject and roll.
+    encoder_ppr: [2048, 2048, 2048, 2048]
+    gear_rate: [71.0, 40.833333333333336, 40.833333333333336, 40.833333333333336]
+    encoder_polarities: [1, 1, 1, 1]
+    max_motor_rps: [4.0, 4.0, 4.0, 4.0]
+    stop_mode: false
+    pos_kp: [0.0, 0.0, 0.0, 0.0]
+    pos_ki: [0.0, 0.0, 0.0, 0.0]
+    pos_kd: [0.0, 0.0, 0.0, 0.0]
+    reset_encoder_origin: [false, false, false, false]
+    reset_encoder_origin_with_switch: [false, false, false, false]
+    encoder_origin_switch_state: [true, true, true, true]
+    # 旧send-only運用設定を維持。新STMの返信監視にはtrueを指定。
     monitor_serial_updates: false
     # monitor_serial_updates=trueのときだけ使用。
     serial_update_failure_limit: 5

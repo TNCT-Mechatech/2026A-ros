@@ -18,7 +18,8 @@
 // Serial massages（メンバに持つので完全型が必要）
 #include "LinuxHardwareSerial.hpp"
 #include "Message.hpp"
-#include "serial_packets.hpp"
+#include <natto_robot_hardware/serial_initialization.hpp>
+#include <std_msgs/msg/u_int8_multi_array.hpp>
 
 // 前方宣言（ポインタで保持するので前方宣言でOK）
 class SerialDev;
@@ -64,8 +65,8 @@ class SerialNode : public rclcpp::Node {
     Watchdog::State                                            watchdog_state_{Watchdog::State::WaitingUpdate};
     Mechanism                                                  mechanism_;
 
-    sb::Message<MotorCommandPacket>  con;
-    sb::Message<MotorFeedbackPacket> fb;
+    natto_serial::SerialFrames frames_;
+    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr switch_pub_;
 
     bool s1, s2, s3, s4, s5, s6;
 

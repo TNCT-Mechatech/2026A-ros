@@ -10,6 +10,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(natto_system_monitor REQUIRED)
+find_package(natto_robot_hardware REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -17,7 +18,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 ###############
 # Add Serialbridge
-set(SERIAL_BRIDGE_DIR "${CMAKE_SOURCE_DIR}/SerialBridge")
+set(SERIAL_BRIDGE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../SerialBridge")
 add_library(serial_bridge_transport STATIC
   ${SERIAL_BRIDGE_DIR}/src/source/LinuxHardwareSerial.cpp
   ${SERIAL_BRIDGE_DIR}/src/source/SerialBridge.cpp
@@ -41,10 +42,10 @@ set(node_list main)
 
 add_executable(main
   src/main.cpp
-  )
+)
 
-  
-ament_target_dependencies(main rclcpp std_msgs sensor_msgs geometry_msgs natto_system_monitor)
+
+ament_target_dependencies(main rclcpp std_msgs sensor_msgs geometry_msgs natto_system_monitor natto_robot_hardware)
 target_compile_features(main PRIVATE cxx_std_17)
 
 foreach(node ${node_list})

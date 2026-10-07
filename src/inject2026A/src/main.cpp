@@ -1,11 +1,12 @@
 #include "main.hpp"  // SerialNode
 
-#include "serial_packets.hpp"  // MotorCommand, MotorFeedback
+#include "serial_packets.hpp"
 
 // 実体ヘッダは .cpp 内で
 #include "LinuxHardwareSerial.hpp"
 #include "SerialBridge.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -13,6 +14,7 @@
 #include <exception>
 #include <stdexcept>
 using std::placeholders::_1;
+using namespace natto_serial;
 
 // 2台のマイコンは、それぞれ別のUSBシリアルポートを使用する。
 // 注入用ST-Linkの個体番号で固定する。
@@ -50,8 +52,9 @@ SerialNode::SerialNode (const std::string &node_name, const char port[], Mechani
       down (false),
       left (false),
       right (false) {
-    con.data = MotorCommandPacket{};  // 初期化
-    fb.data  = MotorFeedbackPacket{};
+    // Existing mechanism commands had pid_state=false: their values are duty.
+    declare_initialization (*this, frames_, 0, declare_parameter<bool>("stop_mode", false),
+                            declare_parameter<double>("max_rps", 4.0), {1, 1, 1, 1});
 
     serial_path_           = declare_parameter<std::string> ("serial_path", port);
     baud_rate_             = baud_rate;
@@ -74,6 +77,8 @@ SerialNode::SerialNode (const std::string &node_name, const char port[], Mechani
 
     publisher_ = this->create_publisher<std_msgs::msg::Float32MultiArray> (feedback_topic, 10);
 
+    switch_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray> (mechanism_ == Mechanism::Inject ? "inject/switch_feedback" : "roll/switch_feedback", 10);
+
     try_open_serial ();
 
     // タイマーの設定（シリアル通信）
@@ -91,7 +96,7 @@ void SerialNode::close_serial () {
     serial_dev.reset ();
     serial_diagnostics_->opened (-1);
     last_reconnect_attempt_ = Watchdog::Clock::now ();
-    con.data                = MotorCommandPacket{};
+    for (auto &motor : frames_.duty) motor.data.duty = 0.0f;
 }
 
 bool SerialNode::try_open_serial () {
@@ -100,12 +105,9 @@ bool SerialNode::try_open_serial () {
     try {
         serial_dev = std::make_unique<SerialPort> (serial_path_.c_str (), baud_rate_, *serial_diagnostics_);
         serial     = std::make_unique<SerialBridge> (serial_dev.get (), 1024);
-        con.data   = MotorCommandPacket{};
-        fb.data    = MotorFeedbackPacket{};
-        con.was_updated ();
-        fb.was_updated ();
-        serial->add_frame (0, &con);
-        serial->add_frame (1, &fb);
+        frames_.reset_received ();
+        frames_.register_all (*serial);
+        frames_.initialize (*serial);
         watchdog_->reset (Watchdog::Clock::now ());
         watchdog_state_ = watchdog_->check (Watchdog::Clock::now ());
         if (!write_command ()) {
@@ -123,7 +125,7 @@ bool SerialNode::try_open_serial () {
 }
 
 void SerialNode::send_stop () {
-    for (auto &motor : con.data.mc) motor.target_wheel_rps = 0.0f;
+    for (auto &motor : frames_.duty) motor.data.duty = 0.0f;
     write_command ();
 }
 
@@ -148,16 +150,16 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
         up       = msg->buttons[12];
 
         // 雑巾装填
-        con.data.mc[0].target_wheel_rps = up * 0.4f - down * 0.2f;
+        frames_.duty[0].data.duty = up * 0.4f - down * 0.2f;
 
         // 雑巾送り出し
-        con.data.mc[1].target_wheel_rps = (cross - circle) * 0.4f;
+        frames_.duty[1].data.duty = (cross - circle) * 0.4f;
 
         // 雑巾ラック
-        con.data.mc[2].target_wheel_rps = (square - triangle) * 0.2f;
+        frames_.duty[2].data.duty = (square - triangle) * 0.2f;
 
         // 未使用
-        con.data.mc[3].target_wheel_rps = 0;
+        frames_.duty[3].data.duty = 0;
     } else {
         if (msg->axes.size () <= 7) {
             RCLCPP_WARN (this->get_logger (), "Joy message has too few axes for the roll mechanism");
@@ -171,43 +173,42 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
         ex2 = msg->axes[7];
 
         // 発射装置1、2
-        con.data.mc[0].target_wheel_rps = -ex1;
-        con.data.mc[1].target_wheel_rps = ex2;
+        frames_.duty[0].data.duty = -ex1;
+        frames_.duty[1].data.duty = ex2;
 
         // モーター3: 左スティック上下
-        con.data.mc[2].target_wheel_rps = ly * 0.3f;
+        frames_.duty[2].data.duty = ly * 0.3f;
 
         // モーター4: 右スティック左右
-        con.data.mc[3].target_wheel_rps = rx * 0.3f;
+        frames_.duty[3].data.duty = rx * 0.3f;
     }
 
     bool neutral = true;
-    for (const auto &motor : con.data.mc) {
-        if (!std::isfinite (motor.target_wheel_rps)) {
+    for (const auto &motor : frames_.duty) {
+        if (!std::isfinite (motor.data.duty)) {
             RCLCPP_WARN (get_logger (), "Joy command contains a non-finite motor target");
             send_stop ();
             return;
         }
-        neutral = neutral && motor.target_wheel_rps == 0.0f;
+        neutral = neutral && motor.data.duty == 0.0f;
     }
     if (!watchdog_->command (Watchdog::Clock::now (), neutral)) {
         send_stop ();
         return;
     }
+    for (auto &motor : frames_.duty) motor.data.duty = std::clamp(motor.data.duty, -1.0f, 1.0f);
     write_command ();
 }
 
 bool SerialNode::write_command () {
     if (!serial) return false;
     if (watchdog_->check (Watchdog::Clock::now ()) != Watchdog::State::Ready) {
-        for (auto &motor : con.data.mc) motor.target_wheel_rps = 0.0f;
+        for (auto &motor : frames_.duty) motor.data.duty = 0.0f;
     }
     try {
-        errno                  = 0;
-        const int write_result = serial->write (0);
-        const int write_errno  = errno;
-        if (write_result == con.size () + 3) return true;
-        RCLCPP_ERROR (get_logger (), "Serial write failed: write=%d errno=%d (%s)", write_result, write_errno, write_errno ? std::strerror (write_errno) : "Short write or unregistered SerialBridge frame");
+        for (size_t i = 0; i < MOTORS; ++i)
+            SerialFrames::write (*serial, CMD_DUTY_FRAME_ID_BASE + i, frames_.duty[i]);
+        return true;
     } catch (const std::exception &e) {
         RCLCPP_ERROR (get_logger (), "Serial write failed: %s", e.what ());
     } catch (...) {
@@ -237,9 +238,9 @@ void SerialNode::serial_callback () {
         observe_restart ();
         return;
     }
-    int update_result = -1;
+    DrainResult received;
     try {
-        update_result = serial->update ();
+        received = frames_.drain (*serial);
     } catch (const std::exception &e) {
         RCLCPP_ERROR (this->get_logger (), "Serial update failed: %s", e.what ());
         send_stop ();
@@ -255,7 +256,8 @@ void SerialNode::serial_callback () {
     }
 
     // Optional receive monitoring; send-only devices may never return a frame.
-    const bool feedback_updated = update_result == 0 && fb.was_updated ();
+    const bool feedback_updated = std::any_of(received.motor_updated.begin(), received.motor_updated.end(), [](bool v) { return v; });
+    const int update_result = received.status;
     const auto time             = Watchdog::Clock::now ();
     if (watchdog_->uses_update_results ())
         watchdog_->update_result (time, update_result);
@@ -274,8 +276,13 @@ void SerialNode::serial_callback () {
 
     if (feedback_updated) {
         std_msgs::msg::Float32MultiArray msg;
-        for (const auto &motor : fb.data.mfd) msg.data.push_back (motor.measured_wheel_rps);
+        for (const auto &motor : frames_.feedback) msg.data.push_back (motor.data.measured_wheel_rps);
         publisher_->publish (msg);
+    }
+    if (received.switches_updated) {
+        std_msgs::msg::UInt8MultiArray msg;
+        for (bool state : frames_.switches.data.state) msg.data.push_back(state);
+        switch_pub_->publish(msg);
     }
     observe_restart ();
 }
