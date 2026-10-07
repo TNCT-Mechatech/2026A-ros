@@ -41,6 +41,9 @@ public:
 
     virtual int write(unsigned char *data, unsigned int len);
 
+    // Read-only accessor used by the existing serial diagnostics observer.
+    int diagnostic_fd() const { return _fd; }
+
 private:
     int _fd;
     struct termios _oldtio;

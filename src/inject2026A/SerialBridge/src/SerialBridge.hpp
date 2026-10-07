@@ -38,14 +38,15 @@ class SerialBridge {
 
    protected:
     enum {
-        STRUCT_MAX_NUM = 10,
+        // STM protocol registers 21 frames. Leave an extra null sentinel below.
+        STRUCT_MAX_NUM = 32,
     };
 
    private:
     int _id_2_order (frame_id id);
     int _update_frame ();
 
-    sb::MessageInterface *_str[STRUCT_MAX_NUM]{};
+    sb::MessageInterface *_str[STRUCT_MAX_NUM + 1]{};
     frame_id              _id_list[STRUCT_MAX_NUM];
 
     CobsSerial *_dev;
