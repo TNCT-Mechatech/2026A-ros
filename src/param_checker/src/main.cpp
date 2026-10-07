@@ -2,7 +2,7 @@
 #include "SerialBridge.hpp"
 #include "natto_robot_hardware/pid_gain_path.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "serial_packets.hpp"
+#include <natto_robot_hardware/serial_initialization.hpp>
 #include "vrft_auto_tuner.hpp"
 #include "yaml-cpp/yaml.h"
 
@@ -18,10 +18,12 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
 using namespace std::literals::chrono_literals;
+using namespace natto_serial;
 
 class ParamCheck : public rclcpp::Node {
    public:
@@ -40,6 +42,9 @@ class ParamCheck : public rclcpp::Node {
         initial_ki_ = declare_parameter<double> ("initial_ki", 1.8);
         initial_kd_ = declare_parameter<double> ("initial_kd", 0.0);
 
+        if (!std::isfinite(initial_kp_) || !std::isfinite(initial_ki_) || !std::isfinite(initial_kd_))
+            throw std::invalid_argument("initial PID gains must be finite");
+
         max_wheel_rps_         = declare_parameter<double> ("max_wheel_rps", 1.5);
         measurement_seconds_   = declare_parameter<double> ("measurement_seconds", 10.0);
         response_time_seconds_ = declare_parameter<double> ("response_time_seconds", 0.3);
@@ -50,16 +55,13 @@ class ParamCheck : public rclcpp::Node {
         axis_y_    = static_cast<int> (declare_parameter<int> ("axis_y", 1));
         axis_turn_ = static_cast<int> (declare_parameter<int> ("axis_turn", 2));
 
-        direction[0] = true;
-        direction[1] = true;
-        direction[2] = true;
-        direction[3] = true;
-
         const bool pid_enabled = declare_parameter<bool> ("pid", false);
         pid_state_.fill (pid_enabled);
 
-        command_frame_id_  = static_cast<uint8_t> (declare_parameter<int> ("command_frame_id", 0));
-        feedback_frame_id_ = static_cast<uint8_t> (declare_parameter<int> ("feedback_frame_id", 1));
+        declare_initialization (*this, frames_, pid_enabled ? 1 : 0, stop_mode_,
+                                max_wheel_rps_, {-1, 1, -1, 1});
+        command_timeout_ = std::chrono::milliseconds(declare_parameter<int>("timeout_ms", 300));
+        if (command_timeout_.count() <= 0) throw std::invalid_argument("timeout_ms must be positive");
 
         for (size_t i = 0; i < vrft_.size (); i++) {
             feedback_.push_back (create_publisher<debug_msgs::msg::Feedback> ("feedback" + std::to_string (i), 10));
@@ -71,8 +73,7 @@ class ParamCheck : public rclcpp::Node {
         joy_sub_ = create_subscription<sensor_msgs::msg::Joy> ("controller/joy", 10, std::bind (&ParamCheck::joy_callback, this, std::placeholders::_1));
 
         open_serial ();
-        serial_->add_frame (command_frame_id_, &command_msg_);
-        serial_->add_frame (feedback_frame_id_, &feedback_msg_);
+        frames_.register_all (*serial_);
 
         target_wheel_rps_.resize (4, 0.0f);
         start_measurement ();
@@ -82,11 +83,6 @@ class ParamCheck : public rclcpp::Node {
 
     ~ParamCheck () override {
         send_stop ();
-
-        if (serial_ != nullptr) {
-            serial_->rm_frame (command_frame_id_);
-            serial_->rm_frame (feedback_frame_id_);
-        }
 
         delete serial_;
         delete dev_;
@@ -145,35 +141,34 @@ class ParamCheck : public rclcpp::Node {
     }
 
     void apply_initial_gain () {
-        for (size_t i = 0; i < target_wheel_rps_.size (); i++) {
-            command_msg_.data.mc[i].target_wheel_rps = target_wheel_rps_[i];
-            command_msg_.data.mc[i].kp               = static_cast<float> (initial_kp_);
-            command_msg_.data.mc[i].ki               = static_cast<float> (initial_ki_);
-            command_msg_.data.mc[i].kd               = static_cast<float> (initial_kd_);
-            command_msg_.data.mc[i].set_direction    = direction[i];
-            command_msg_.data.mc[i].pid_state        = pid_state_[i];
-            command_msg_.data.mc[i].stop_mode        = stop_mode_;
+        for (size_t i = 0; i < MOTORS; ++i) {
+            auto &init = frames_.init[i].data;
+            init.vel_kp = initial_kp_;
+            init.vel_ki = initial_ki_;
+            init.vel_kd = initial_kd_;
         }
+        if (serial_) frames_.initialize (*serial_);
+        send_stop ();
+    }
 
-        if (serial_ != nullptr) {
-            last_command_write_result_ = serial_->write (command_frame_id_);
-            command_write_count_++;
+    void write_targets () {
+        if (!serial_) return;
+        for (size_t i = 0; i < MOTORS; ++i) {
+            if (pid_state_[i]) {
+                frames_.velocity[i].data.target_motor_rps = target_wheel_rps_[i];
+                last_command_write_result_ = SerialFrames::write (*serial_, CMD_VEL_FRAME_ID_BASE+i, frames_.velocity[i]);
+            } else {
+                frames_.duty[i].data.duty = std::clamp(target_wheel_rps_[i], -1.0f, 1.0f);
+                last_command_write_result_ = SerialFrames::write (*serial_, CMD_DUTY_FRAME_ID_BASE+i, frames_.duty[i]);
+            }
+            ++command_write_count_;
         }
     }
 
     void send_stop () {
-        for (auto &motor : command_msg_.data.mc) {
-            motor.target_wheel_rps = 0.0f;
-            motor.kp               = 0.0f;
-            motor.ki               = 0.0f;
-            motor.kd               = 0.0f;
-            motor.pid_state        = false;
-        }
-
-        if (serial_ != nullptr) {
-            last_command_write_result_ = serial_->write (command_frame_id_);
-            command_write_count_++;
-        }
+        std::fill(target_wheel_rps_.begin(), target_wheel_rps_.end(), 0.0f);
+        try { write_targets (); }
+        catch (const std::exception &e) { RCLCPP_ERROR(get_logger(), "Stop write failed: %s", e.what()); }
     }
 
     void joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
@@ -186,7 +181,12 @@ class ParamCheck : public rclcpp::Node {
         const float turn = read_axis (*msg, axis_turn_);
 
         set_mecanum_target (x, y, turn);
-        apply_initial_gain ();
+        last_joy_time_ = std::chrono::steady_clock::now();
+        try { write_targets (); }
+        catch (const std::exception &e) {
+            RCLCPP_ERROR(get_logger(), "Command write failed: %s", e.what());
+            send_stop();
+        }
     }
 
     float read_axis (const sensor_msgs::msg::Joy &msg, int axis) const {
@@ -195,7 +195,7 @@ class ParamCheck : public rclcpp::Node {
         }
 
         const float value = msg.axes[static_cast<size_t> (axis)];
-        if (std::fabs (value) < joy_deadband_) {
+        if (!std::isfinite(value) || std::fabs (value) < joy_deadband_) {
             return 0.0f;
         }
 
@@ -219,7 +219,7 @@ class ParamCheck : public rclcpp::Node {
             if (pid_state_[i]) {
                 target_wheel_rps_[i] = raw[i] / max_abs * static_cast<float> (max_wheel_rps_);
             } else {
-                target_wheel_rps_[i] = raw[i];  // 送信先でコンペア
+                target_wheel_rps_[i] = std::clamp(raw[i], -1.0f, 1.0f);  // signed duty
             }
             // if (i != 1) target_wheel_rps_[i] = 0.0f;  // 1のみでテスト
             // if (i == 1) target_wheel_rps_[i] = 0.0f;
@@ -232,19 +232,22 @@ class ParamCheck : public rclcpp::Node {
         }
 
         const auto callback_start   = now ();
-        const int  update_result    = serial_->update ();
+        const auto received = frames_.drain (*serial_);
+        const int update_result = received.status;
         const auto update_end       = now ();
-        const bool feedback_updated = feedback_msg_.was_updated ();
+        const bool feedback_updated = std::any_of(received.motor_updated.begin(), received.motor_updated.end(), [](bool v) { return v; });
+        // Keep the ROS command deadline and STM 300ms timeout as independent stops.
+        if (std::chrono::steady_clock::now() - last_joy_time_ >= command_timeout_) send_stop();
 
         if (phase_ == Phase::Measure) {
             record_serial_diagnostic (callback_start, update_end, update_result, feedback_updated);
         }
 
         if (feedback_updated) {
-            publish_feedback ();
+            publish_feedback (received.motor_updated);
 
             if (phase_ == Phase::Measure) {
-                record_vrft_sample ();
+                record_vrft_sample (received.motor_updated);
             }
         }
 
@@ -307,27 +310,29 @@ class ParamCheck : public rclcpp::Node {
         RCLCPP_INFO (get_logger (), "VRFT measurement countdown: %ds remaining", seconds_left);
     }
 
-    void publish_feedback () {
+    void publish_feedback (const std::array<bool, MOTORS> &updated) {
         for (size_t i = 0; i < feedback_.size (); i++) {
+            if (!updated[i]) continue;
             debug_msgs::msg::Feedback msg;
 
-            msg.output        = feedback_msg_.data.mfd[i].output;
-            msg.current_rps   = feedback_msg_.data.mfd[i].measured_wheel_rps;
-            msg.encoder_count = feedback_msg_.data.mfd[i].encoder_count;
-            msg.duty          = feedback_msg_.data.mfd[i].duty;
-            msg.dir           = feedback_msg_.data.mfd[i].dir;
+            msg.output        = frames_.feedback[i].data.output;
+            msg.current_rps   = frames_.feedback[i].data.measured_wheel_rps;
+            msg.encoder_count = frames_.feedback[i].data.encoder_count;
+            msg.duty          = frames_.feedback[i].data.duty;
+            msg.dir           = frames_.feedback[i].data.dir;
             msg.target_rps    = target_wheel_rps_[i];
 
             feedback_[i]->publish (msg);
         }
     }
 
-    void record_vrft_sample () {
+    void record_vrft_sample (const std::array<bool, MOTORS> &updated) {
         const double elapsed_sec = (now () - phase_start_time_).seconds ();
 
         for (size_t i = 0; i < vrft_.size (); i++) {
-            const float input  = signed_by_dir (feedback_msg_.data.mfd[i].duty, feedback_msg_.data.mfd[i].dir);
-            const float output = feedback_msg_.data.mfd[i].measured_wheel_rps;
+            if (!updated[i]) continue;
+            const float input  = signed_by_dir (frames_.feedback[i].data.duty, frames_.feedback[i].data.dir);
+            const float output = frames_.feedback[i].data.measured_wheel_rps;
 
             if (std::isfinite (input) && std::isfinite (output)) {
                 vrft_[i].update (input, output, static_cast<float> (elapsed_sec));
@@ -361,18 +366,7 @@ class ParamCheck : public rclcpp::Node {
             config["wheel" + std::to_string (i)]["kp"] = gain[0];
             config["wheel" + std::to_string (i)]["ki"] = gain[1];
             config["wheel" + std::to_string (i)]["kd"] = gain[2];
-            printf ("msg.kp = %.6f\n", gain[0]);
-            printf ("msg.ki = %.6f\n", gain[1]);
-            printf ("msg.kd = %.6f\n", gain[2]);
             pid_gain_[i]->publish (msg);
-
-            if (gain[0] == 0.0f && gain[1] == 0.0f && gain[2] == 0.0f) {
-                RCLCPP_WARN (get_logger (), "wheel%zu: VRFT failed or data was insufficient.", i);
-            } else if (gain[0] < 0.0f || gain[1] < 0.0f || gain[2] < 0.0f) {
-                RCLCPP_WARN (get_logger (), "wheel%zu: PID=(%.6f, %.6f, %.6f). Negative gain detected; check motor/encoder direction.", i, gain[0], gain[1], gain[2]);
-            } else {
-                RCLCPP_INFO (get_logger (), "wheel%zu: PID=(%.6f, %.6f, %.6f)", i, gain[0], gain[1], gain[2]);
-            }
         }
         bool gains_saved = false;
         try {
@@ -398,12 +392,54 @@ class ParamCheck : public rclcpp::Node {
             timer_ptr_->cancel ();
         }
 
+        log_gain_summary (gains, gains_saved);
+
         if (gains_saved) {
             RCLCPP_INFO (get_logger (), "Diagnosis completed. Shutting down param_checker.");
         } else {
             RCLCPP_ERROR (get_logger (), "Diagnosis finished, but PID gains were not saved. Shutting down param_checker.");
         }
         rclcpp::shutdown ();
+    }
+
+    void log_gain_summary (const std::array<std::array<float, 3>, 4> &gains, bool gains_saved) {
+        const auto format_gain = [] (float value) {
+            std::ostringstream text;
+            const float magnitude = std::fabs (value);
+            // Keep small or large gains readable without rounding them to zero.
+            if ((magnitude > 0.0f && magnitude < 1e-6f) || magnitude >= 1e6f)
+                text << std::scientific;
+            else
+                text << std::fixed;
+            text << std::setprecision (6) << value;
+            return text.str ();
+        };
+
+        std::ostringstream summary;
+        summary << "\nPIDゲインの決定値 (VRFT)\n"
+                << std::left << std::setw (8) << "Motor" << " | "
+                << std::right << std::setw (14) << "kp" << " | "
+                << std::setw (14) << "ki" << " | " << std::setw (14) << "kd" << " | 判定\n"
+                << std::string (76, '-') << "\n";
+
+        bool needs_attention = !gains_saved;
+        for (size_t i = 0; i < gains.size (); ++i) {
+            const auto &gain = gains[i];
+            const bool finite = std::all_of (gain.begin (), gain.end (), [] (float v) { return std::isfinite (v); });
+            const bool all_zero = std::all_of (gain.begin (), gain.end (), [] (float v) { return v == 0.0f; });
+            const bool negative = std::any_of (gain.begin (), gain.end (), [] (float v) { return v < 0.0f; });
+            const char *status = !finite ? "非有限値（要確認）" : all_zero ? "算出失敗 / データ不足" : negative ? "負のゲイン（極性を確認）" : "OK";
+            needs_attention = needs_attention || !finite || all_zero || negative;
+            summary << std::left << std::setw (8) << ("wheel" + std::to_string (i)) << " | ";
+            for (float value : gain) summary << std::right << std::setw (14) << format_gain (value) << " | ";
+            summary << status << "\n";
+        }
+        summary << std::string (76, '-') << "\n"
+                << "PID YAML: " << pid_gain_output_path_ << (gains_saved ? " （保存済み）" : " （保存失敗）") << "\n"
+                << "kd列は計算・保存値です。通常運転の車輪ブリッジは vel_kd=0 を送信します。";
+        const auto text = summary.str ();
+        if (needs_attention) RCLCPP_WARN (get_logger (), "%s", text.c_str ());
+        else RCLCPP_INFO (get_logger (), "%s", text.c_str ());
     }
 
     void write_vrft_csv (const std::array<std::array<float, 3>, 4> &gains) {
@@ -569,7 +605,6 @@ class ParamCheck : public rclcpp::Node {
     size_t                              last_recorded_command_write_count_{0};
     int                                 last_command_write_result_{0};
 
-    bool direction[4];
     bool stop_mode_;
 
     int axis_x_;
@@ -587,14 +622,13 @@ class ParamCheck : public rclcpp::Node {
 
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_{nullptr};
 
-    uint8_t command_frame_id_;
-    uint8_t feedback_frame_id_;
 
     LinuxHardwareSerial *dev_{nullptr};
     SerialBridge        *serial_{nullptr};
 
-    sb::Message<MotorCommandPacket>  command_msg_;
-    sb::Message<MotorFeedbackPacket> feedback_msg_;
+    SerialFrames frames_;
+    std::chrono::milliseconds command_timeout_{300};
+    std::chrono::steady_clock::time_point last_joy_time_{};
 };
 
 int main (int argc, char **argv) {

@@ -1,0 +1,10 @@
+<launch>
+  <arg name="gain_output_path" default=""/>
+  <arg name="serial_path" default="/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02"/>
+  <arg name="serial_config" default="$(find-pkg-share param_checker)/config/serial_protocol.yaml"/>
+  <include file="$(find-pkg-share param_checker)/launch/param_checker.launch.xml">
+    <arg name="gain_output_path" value="$(var gain_output_path)"/>
+    <arg name="serial_path" value="$(var serial_path)"/>
+    <arg name="serial_config" value="$(var serial_config)"/>
+  </include>
+</launch>
