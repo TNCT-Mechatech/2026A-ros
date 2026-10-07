@@ -53,8 +53,7 @@ SerialNode::SerialNode (const std::string &node_name, const char port[], Mechani
       left (false),
       right (false) {
     // Existing mechanism commands had pid_state=false: their values are duty.
-    declare_initialization (*this, frames_, 0, declare_parameter<bool>("stop_mode", false),
-                            declare_parameter<double>("max_rps", 4.0), {1, 1, 1, 1});
+    declare_initialization (*this, frames_, 0, declare_parameter<bool> ("stop_mode", false), declare_parameter<double> ("max_rps", 4.0), {1, 1, 1, 1});
 
     serial_path_           = declare_parameter<std::string> ("serial_path", port);
     baud_rate_             = baud_rate;
@@ -196,7 +195,7 @@ void SerialNode::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
         send_stop ();
         return;
     }
-    for (auto &motor : frames_.duty) motor.data.duty = std::clamp(motor.data.duty, -1.0f, 1.0f);
+    for (auto &motor : frames_.duty) motor.data.duty = std::clamp (motor.data.duty, -1.0f, 1.0f);
     write_command ();
 }
 
@@ -206,8 +205,7 @@ bool SerialNode::write_command () {
         for (auto &motor : frames_.duty) motor.data.duty = 0.0f;
     }
     try {
-        for (size_t i = 0; i < MOTORS; ++i)
-            SerialFrames::write (*serial, CMD_DUTY_FRAME_ID_BASE + i, frames_.duty[i]);
+        for (size_t i = 0; i < MOTORS; ++i) SerialFrames::write (*serial, CMD_DUTY_FRAME_ID_BASE + i, frames_.duty[i]);
         return true;
     } catch (const std::exception &e) {
         RCLCPP_ERROR (get_logger (), "Serial write failed: %s", e.what ());
@@ -256,8 +254,8 @@ void SerialNode::serial_callback () {
     }
 
     // Optional receive monitoring; send-only devices may never return a frame.
-    const bool feedback_updated = std::any_of(received.motor_updated.begin(), received.motor_updated.end(), [](bool v) { return v; });
-    const int update_result = received.status;
+    const bool feedback_updated = std::any_of (received.motor_updated.begin (), received.motor_updated.end (), [] (bool v) { return v; });
+    const int  update_result    = received.status;
     const auto time             = Watchdog::Clock::now ();
     if (watchdog_->uses_update_results ())
         watchdog_->update_result (time, update_result);
@@ -281,8 +279,8 @@ void SerialNode::serial_callback () {
     }
     if (received.switches_updated) {
         std_msgs::msg::UInt8MultiArray msg;
-        for (bool state : frames_.switches.data.state) msg.data.push_back(state);
-        switch_pub_->publish(msg);
+        for (bool state : frames_.switches.data.state) msg.data.push_back (state);
+        switch_pub_->publish (msg);
     }
     observe_restart ();
 }

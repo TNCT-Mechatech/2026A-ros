@@ -58,13 +58,12 @@ class SerialMotorBridge : public rclcpp::Node {
 
         if (reconnect_interval_ms_ <= 0) throw std::invalid_argument ("reconnect_interval_ms must be positive");
 
-
         std::vector<std::string> default_names = {"mecanum_wheel_fl", "mecanum_wheel_fr", "mecanum_wheel_rl", "mecanum_wheel_rr"};
         wheel_names_                           = declare_parameter<std::vector<std::string>> ("wheel_names", default_names);
         wheel_polarities_                      = declare_parameter<std::vector<int64_t>> ("wheel_polarities", {-1, 1, -1, 1});
         encoder_polarities_                    = declare_parameter<std::vector<int64_t>> ("encoder_polarities", {-1, -1, -1, -1});
 
-        if (wheel_names_.size() != MOTORS) throw std::invalid_argument("wheel_names must contain four names");
+        if (wheel_names_.size () != MOTORS) throw std::invalid_argument ("wheel_names must contain four names");
 
         if (wheel_polarities_.size () != 4) {
             throw std::invalid_argument ("wheel_polarities must contain exactly 4 values");
@@ -137,7 +136,6 @@ class SerialMotorBridge : public rclcpp::Node {
 
         // Retain the existing parameter for launch compatibility; raw counts need no dt.
         declare_parameter<double> ("max_feedback_dt_sec", 0.1);
-
 
         std::fill (std::begin (kp), std::end (kp), 0.0f);
         std::fill (std::begin (ki), std::end (ki), 0.0f);
@@ -212,7 +210,7 @@ class SerialMotorBridge : public rclcpp::Node {
             feedback_cohort_.fill (false);
             frames_.initialize (*serial_);
 
-            serial_connected_  = true;
+            serial_connected_ = true;
             watchdog_->reset (Watchdog::Clock::now ());
             watchdog_state_ = Watchdog::State::WaitingFeedback;
 
@@ -243,8 +241,10 @@ class SerialMotorBridge : public rclcpp::Node {
         }
         try {
             for (size_t i = 0; i < MOTORS; ++i) {
-                if (pid) SerialFrames::write (*serial_, CMD_VEL_FRAME_ID_BASE + i, frames_.velocity[i]);
-                else SerialFrames::write (*serial_, CMD_DUTY_FRAME_ID_BASE + i, frames_.duty[i]);
+                if (pid)
+                    SerialFrames::write (*serial_, CMD_VEL_FRAME_ID_BASE + i, frames_.velocity[i]);
+                else
+                    SerialFrames::write (*serial_, CMD_DUTY_FRAME_ID_BASE + i, frames_.duty[i]);
             }
             return true;
         } catch (const std::exception &e) {
@@ -260,8 +260,7 @@ class SerialMotorBridge : public rclcpp::Node {
     void initialize_command_packet () {
         for (size_t i = 0; i < MOTORS; ++i) {
             auto &packet = frames_.init[i].data;
-            if (!std::isfinite(kp[i]) || !std::isfinite(ki[i]) || !std::isfinite(kd[i]))
-                throw std::invalid_argument("velocity PID gains must be finite");
+            if (!std::isfinite (kp[i]) || !std::isfinite (ki[i]) || !std::isfinite (kd[i])) throw std::invalid_argument ("velocity PID gains must be finite");
             packet.vel_kp = pid ? kp[i] : 0.0f;
             packet.vel_ki = pid ? ki[i] : 0.0f;
             // Keep derivative control disabled as in the original hardware bridge.
@@ -274,7 +273,7 @@ class SerialMotorBridge : public rclcpp::Node {
     void set_zero_command () {
         for (size_t i = 0; i < MOTORS; ++i) {
             frames_.velocity[i].data.target_motor_rps = 0.0f;
-            frames_.duty[i].data.duty = 0.0f;
+            frames_.duty[i].data.duty                 = 0.0f;
         }
         last_open_loop_outputs_.fill (0.0);
     }
@@ -311,7 +310,7 @@ class SerialMotorBridge : public rclcpp::Node {
 
         if (command_mode_ == "closed_loop_velocity") {
             for (size_t i = 0; i < 4; ++i) {
-                const double rps                         = std::clamp (wheel_rps[i], -max_rps_, max_rps_);
+                const double rps                          = std::clamp (wheel_rps[i], -max_rps_, max_rps_);
                 frames_.velocity[i].data.target_motor_rps = static_cast<float> (rps * static_cast<double> (wheel_polarities_[i]));
             }
         } else {
@@ -336,9 +335,9 @@ class SerialMotorBridge : public rclcpp::Node {
             }
 
             for (size_t i = 0; i < 4; ++i) {
-                const double output                      = last_open_loop_outputs_[i] + (desired_outputs[i] - last_open_loop_outputs_[i]) * slew_scale;
-                last_open_loop_outputs_[i]               = std::clamp (output, -1.0, 1.0);
-                frames_.duty[i].data.duty = static_cast<float> (last_open_loop_outputs_[i]);
+                const double output                       = last_open_loop_outputs_[i] + (desired_outputs[i] - last_open_loop_outputs_[i]) * slew_scale;
+                last_open_loop_outputs_[i]                = std::clamp (output, -1.0, 1.0);
+                frames_.duty[i].data.duty                 = static_cast<float> (last_open_loop_outputs_[i]);
                 frames_.velocity[i].data.target_motor_rps = static_cast<float> (wheel_rps[i] * wheel_polarities_[i]);
             }
         }
@@ -409,27 +408,26 @@ class SerialMotorBridge : public rclcpp::Node {
         }
 
         const auto received_time = Watchdog::Clock::now ();
-        bool any_feedback = false;
+        bool       any_feedback  = false;
         for (size_t i = 0; i < MOTORS; ++i) {
             if (received.motor_updated[i]) {
                 feedback_seen_[i] = feedback_cohort_[i] = true;
-                any_feedback = true;
+                any_feedback                            = true;
             }
         }
         // A single live motor or switch must not hide a missing motor.
-        if (std::all_of(feedback_cohort_.begin(), feedback_cohort_.end(), [](bool v) { return v; })) {
+        if (std::all_of (feedback_cohort_.begin (), feedback_cohort_.end (), [] (bool v) { return v; })) {
             watchdog_->feedback (received_time);
             feedback_cohort_.fill (false);
         }
         if (any_feedback) {
-            if (std::all_of(feedback_seen_.begin(), feedback_seen_.end(), [](bool v) { return v; }))
-                publish_joint_state (current_time);
+            if (std::all_of (feedback_seen_.begin (), feedback_seen_.end (), [] (bool v) { return v; })) publish_joint_state (current_time);
             publish_feedback (received.motor_updated);
         }
         if (received.switches_updated) {
             std_msgs::msg::UInt8MultiArray msg;
-            for (bool state : frames_.switches.data.state) msg.data.push_back(state);
-            switch_pub_->publish(msg);
+            for (bool state : frames_.switches.data.state) msg.data.push_back (state);
+            switch_pub_->publish (msg);
         }
 
         const auto state = watchdog_->check (received_time);
@@ -478,10 +476,10 @@ class SerialMotorBridge : public rclcpp::Node {
             status.values.push_back (key_value);
         };
 
-        add_value ("invalid_packets", std::to_string(invalid_packets_));
-        add_value ("unregistered_frames", std::to_string(unregistered_frames_));
-        add_value ("drain_budget_hits", std::to_string(drain_budget_hits_));
-        add_value ("stm_comm_timeout_ms", std::to_string(COMM_TIMEOUT_MS));
+        add_value ("invalid_packets", std::to_string (invalid_packets_));
+        add_value ("unregistered_frames", std::to_string (unregistered_frames_));
+        add_value ("drain_budget_hits", std::to_string (drain_budget_hits_));
+        add_value ("stm_comm_timeout_ms", std::to_string (COMM_TIMEOUT_MS));
         add_value ("reconnect_attempts", std::to_string (reconnect_attempts_));
         add_value ("watchdog_state", Watchdog::name (state));
         add_value ("connected", serial_connected_ ? "true" : "false");
@@ -510,16 +508,15 @@ class SerialMotorBridge : public rclcpp::Node {
         msg.velocity.resize (4);
         msg.effort.resize (4);
 
-
         for (size_t i = 0; i < 4; ++i) {
-            const auto &feedback = frames_.feedback[i].data;
-            const double polarity = static_cast<double>(wheel_polarities_[i]);
-            const double radps = feedback.measured_wheel_rps * polarity * 2.0 * M_PI;
-            const auto &init = frames_.init[i].data;
-            const double cpr = static_cast<double>(init.encoder_ppr) * 4.0 * init.gear_rate;
+            const auto  &feedback = frames_.feedback[i].data;
+            const double polarity = static_cast<double> (wheel_polarities_[i]);
+            const double radps    = feedback.measured_wheel_rps * polarity * 2.0 * M_PI;
+            const auto  &init     = frames_.init[i].data;
+            const double cpr      = static_cast<double> (init.encoder_ppr) * 4.0 * init.gear_rate;
             // STM corrects the encoder for its PID motor coordinates. Convert
             // back to ROS wheel coordinates with the inverse command polarity.
-            msg.position[i] = static_cast<double>(feedback.encoder_raw_count) / cpr * polarity * 2.0 * M_PI;
+            msg.position[i] = static_cast<double> (feedback.encoder_raw_count) / cpr * polarity * 2.0 * M_PI;
             msg.velocity[i] = radps;
             msg.effort[i]   = 0.0;
         }
@@ -585,10 +582,10 @@ class SerialMotorBridge : public rclcpp::Node {
     LinuxHardwareSerial *dev_{nullptr};
     SerialBridge        *serial_{nullptr};
 
-    SerialFrames frames_;
+    SerialFrames             frames_;
     std::array<bool, MOTORS> feedback_seen_{};
     std::array<bool, MOTORS> feedback_cohort_{};
-    uint64_t invalid_packets_{0}, unregistered_frames_{0}, drain_budget_hits_{0};
+    uint64_t                 invalid_packets_{0}, unregistered_frames_{0}, drain_budget_hits_{0};
 
     std::array<double, 4> last_open_loop_outputs_{};
 
@@ -600,7 +597,7 @@ class SerialMotorBridge : public rclcpp::Node {
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr           joint_state_pub_;
     std::vector<rclcpp::Publisher<debug_msgs::msg::Feedback>::SharedPtr> feedback_pubs_;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr  diagnostics_pub_;
-    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr switch_pub_;
+    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr         switch_pub_;
     rclcpp::TimerBase::SharedPtr                                         timer_;
 };
 
