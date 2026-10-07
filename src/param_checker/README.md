@@ -1,5 +1,25 @@
 # param_checker
 
+[使い方ガイド（起動・操作・設定・結果確認）](USAGE.md)
+
+速度ゲイン測定と位置ゲイン測定はlaunchを分けています。
+
+```bash
+# 速度ゲイン測定（従来の4輪VRFT）
+ros2 launch param_checker param_checker_velocity.launch.xml
+# 位置Pゲイン測定（保存済み速度PIを使用、対象モータを指定）
+ros2 launch param_checker param_checker_position.launch.xml target_motor_index:=0
+# 保存済み位置ゲインで実際の位置指令を確認
+ros2 launch param_checker param_checker_position.launch.xml \
+  target_motor_index:=0 position_operation:=verify
+```
+
+位置用は `position_checker` を実行します。位置ゲインの単位は `rps/encoder_count`、
+位置指令は64bitの生カウントです。速度・位置のKdと位置Kiは0固定です。
+測定は対象モータの最初のfeedbackから30秒間、他の3台はゼロ出力にします。
+既存の `wheelN.kp/ki/kd` を保持して `wheelN.position` を追記します。
+[位置制御の手順と全オプション](USAGE.md#12-位置制御のゲイン測定と動作確認)を参照してください。
+
 実機の測定データからPID係数を計算し、既定では `~/.ros/natto/pid_gain.yaml` に保存します。
 メカナムの通信ノードも同じファイルを読み込みます。`ROS_HOME` 設定時はその配下の
 `natto/pid_gain.yaml` を使用します。

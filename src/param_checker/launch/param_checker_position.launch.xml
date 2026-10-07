@@ -1,0 +1,24 @@
+<launch>
+  <arg name="gain_output_path" default="" description="Existing velocity gain YAML; position results are added to this file"/>
+  <arg name="gain_input_path" default="" description="Velocity/position gain source; empty uses gain_output_path"/>
+  <arg name="serial_path" default="/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02"/>
+  <arg name="serial_config" default="$(find-pkg-share param_checker)/config/serial_protocol.yaml"/>
+  <arg name="position_operation" default="tune" description="tune: identify position P using inner velocity PI; verify: send position commands"/>
+  <arg name="target_motor_index" default="0" description="Target motor (0..3); other motors receive zero duty"/>
+  <arg name="measurement_seconds" default="30.0"/>
+  <arg name="position_measurement_max_rps" default="0.03"/>
+  <arg name="position_response_time_seconds" default="2.0"/>
+  <arg name="position_range_counts" default="1000" description="verify joystick range in raw counts, relative to startup position"/>
+  <node pkg="param_checker" exec="position_checker" name="param_check" output="screen">
+    <param from="$(var serial_config)"/>
+    <param name="serial_path" value="$(var serial_path)" type="str"/>
+    <param name="gain_output_path" value="$(var gain_output_path)" type="str"/>
+    <param name="gain_input_path" value="$(var gain_input_path)" type="str"/>
+    <param name="position_operation" value="$(var position_operation)" type="str"/>
+    <param name="target_motor_index" value="$(var target_motor_index)" type="int"/>
+    <param name="measurement_seconds" value="$(var measurement_seconds)" type="float"/>
+    <param name="position_measurement_max_rps" value="$(var position_measurement_max_rps)" type="float"/>
+    <param name="position_response_time_seconds" value="$(var position_response_time_seconds)" type="float"/>
+    <param name="position_range_counts" value="$(var position_range_counts)" type="int"/>
+  </node>
+</launch>
