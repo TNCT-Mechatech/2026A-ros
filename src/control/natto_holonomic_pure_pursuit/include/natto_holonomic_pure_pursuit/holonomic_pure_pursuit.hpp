@@ -75,7 +75,7 @@ class holonomic_pure_pursuit : public rclcpp::Node {
     nav_msgs::msg::Path::SharedPtr              path_;
 
     path_geometry::PathGeometry path_geometry_;
-    void update_path_geometry ();
+    void                        update_path_geometry ();
 
     void timer_callback ();
     void pose_callback (const geometry_msgs::msg::PoseStamped::SharedPtr msg);

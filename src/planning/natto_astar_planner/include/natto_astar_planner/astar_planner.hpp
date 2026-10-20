@@ -59,15 +59,15 @@ class astar_planner : public rclcpp::Node {
     void                                                             publish_path (bool valid = true, const std::string &reason = "");
     void                                                             clear_navigation (const std::string &reason);
 
-    int         theta_resolution_deg_;
-    std::string map_frame_;
-    double      xy_inflation_, xy_offset_, yaw_offset_;
+    int                 theta_resolution_deg_;
+    std::string         map_frame_;
+    double              xy_inflation_, xy_offset_, yaw_offset_;
     std::vector<double> start_area_bounds_;
     double              start_area_xy_inflation_;
     std::vector<double> keepout_grid_reflection_x_;
     bool                angular_grid_reflect_yaw_ = false;
-    double      grad_alpha_, grad_beta_, grad_gamma_, grad_step_size_;
-    double      replan_distance_threshold_m_, replan_distance_threshold_yaw_deg_;
+    double              grad_alpha_, grad_beta_, grad_gamma_, grad_step_size_;
+    double              replan_distance_threshold_m_, replan_distance_threshold_yaw_deg_;
 
     nav_msgs::msg::OccupancyGrid           raw_map_;
     nav_msgs::msg::OccupancyGrid           costmap_;

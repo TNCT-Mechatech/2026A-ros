@@ -43,20 +43,20 @@ astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("
     footprint_subscription_    = this->create_subscription<geometry_msgs::msg::PolygonStamped> ("footprint", 10, std::bind (&astar_planner::footprint_callback, this, std::placeholders::_1));
     if (!managed_navigation_) goal_reached_subscription_ = this->create_subscription<std_msgs::msg::Bool> ("goal_reached", 10, std::bind (&astar_planner::goal_reached_callback, this, std::placeholders::_1));
 
-    theta_resolution_deg_              = static_cast<int> (this->declare_parameter<int> ("theta_resolution_deg", 5));
-    angular_grid_reflect_yaw_           = this->declare_parameter<bool> ("angular_grid_reflect_yaw", false);
-    map_frame_                         = this->declare_parameter<std::string> ("map_frame", "map");
-    xy_inflation_                      = this->declare_parameter<double> ("xy_inflation", 0.5);
-    xy_offset_                         = this->declare_parameter<double> ("xy_offset", 0.1);
-    start_area_bounds_                 = this->declare_parameter<std::vector<double>> ("start_area_bounds", std::vector<double> {});
-    start_area_xy_inflation_           = this->declare_parameter<double> ("start_area_xy_inflation", xy_inflation_);
-    keepout_grid_reflection_x_         = this->declare_parameter<std::vector<double>> ("keepout_grid_reflection_x", std::vector<double> {});
+    theta_resolution_deg_      = static_cast<int> (this->declare_parameter<int> ("theta_resolution_deg", 5));
+    angular_grid_reflect_yaw_  = this->declare_parameter<bool> ("angular_grid_reflect_yaw", false);
+    map_frame_                 = this->declare_parameter<std::string> ("map_frame", "map");
+    xy_inflation_              = this->declare_parameter<double> ("xy_inflation", 0.5);
+    xy_offset_                 = this->declare_parameter<double> ("xy_offset", 0.1);
+    start_area_bounds_         = this->declare_parameter<std::vector<double>> ("start_area_bounds", std::vector<double>{});
+    start_area_xy_inflation_   = this->declare_parameter<double> ("start_area_xy_inflation", xy_inflation_);
+    keepout_grid_reflection_x_ = this->declare_parameter<std::vector<double>> ("keepout_grid_reflection_x", std::vector<double>{});
     if (!keepout_grid_reflection_x_.empty () && (keepout_grid_reflection_x_.size () != 1 || !std::isfinite (keepout_grid_reflection_x_.front ()))) {
         throw std::invalid_argument ("keepout_grid_reflection_x must be empty or contain one finite mirror axis in metres");
     }
     if (!start_area_bounds_.empty ()) {
-        if (start_area_bounds_.size () != 4 || !std::all_of (start_area_bounds_.begin (), start_area_bounds_.end (), [] (double v) { return std::isfinite (v); }) ||
-            start_area_bounds_[0] >= start_area_bounds_[1] || start_area_bounds_[2] >= start_area_bounds_[3]) {
+        if (start_area_bounds_.size () != 4 || !std::all_of (start_area_bounds_.begin (), start_area_bounds_.end (), [] (double v) { return std::isfinite (v); }) || start_area_bounds_[0] >= start_area_bounds_[1] ||
+            start_area_bounds_[2] >= start_area_bounds_[3]) {
             throw std::invalid_argument ("start_area_bounds must be [min_x, max_x, min_y, max_y] with finite, increasing bounds");
         }
         if (!std::isfinite (start_area_xy_inflation_) || start_area_xy_inflation_ < 0.0 || start_area_xy_inflation_ > xy_inflation_) {
@@ -86,8 +86,7 @@ astar_planner::astar_planner (const rclcpp::NodeOptions &node_options) : Node ("
         RCLCPP_INFO (this->get_logger (), "keepout grid reflection: x=%.3f m", keepout_grid_reflection_x_.front ());
     }
     if (!start_area_bounds_.empty ()) {
-        RCLCPP_INFO (this->get_logger (), "start area: x=[%.2f, %.2f], y=[%.2f, %.2f], xy_inflation=%.2f", start_area_bounds_[0], start_area_bounds_[1], start_area_bounds_[2], start_area_bounds_[3],
-                     start_area_xy_inflation_);
+        RCLCPP_INFO (this->get_logger (), "start area: x=[%.2f, %.2f], y=[%.2f, %.2f], xy_inflation=%.2f", start_area_bounds_[0], start_area_bounds_[1], start_area_bounds_[2], start_area_bounds_[3], start_area_xy_inflation_);
     }
     RCLCPP_INFO (this->get_logger (), "yaw_offset: %.2f", yaw_offset_);
     RCLCPP_INFO (this->get_logger (), "grad_alpha: %.2f", grad_alpha_);
@@ -281,19 +280,19 @@ void astar_planner::rasterize_keepout_zones (nav_msgs::msg::OccupancyGrid &grid)
         return;
     }
     const double resolution = grid.info.resolution;
-    const size_t width = grid.info.width;
-    const size_t height = grid.info.height;
+    const size_t width      = grid.info.width;
+    const size_t height     = grid.info.height;
     if (width == 0 || height == 0 || !std::isfinite (resolution) || resolution <= 0.0 || grid.data.size () < width * height) return;
 
     // Reflect the geometry into the reference side before rasterizing. This
     // preserves its existing boundary convention (including float resolution
     // rounding), rather than changing the other side's occupied cells.
-    const double axis = keepout_grid_reflection_x_.front ();
-    auto zones = restricted_zones_;
+    const double axis  = keepout_grid_reflection_x_.front ();
+    auto         zones = restricted_zones_;
     for (auto &zone : zones) {
         const double min_x = 2.0 * axis - zone.max_x;
-        zone.max_x = 2.0 * axis - zone.min_x;
-        zone.min_x = min_x;
+        zone.max_x         = 2.0 * axis - zone.min_x;
+        zone.min_x         = min_x;
         for (auto &vertex : zone.vertices) vertex.x = 2.0 * axis - vertex.x;
     }
 
@@ -301,8 +300,8 @@ void astar_planner::rasterize_keepout_zones (nav_msgs::msg::OccupancyGrid &grid)
     reflected.data.assign (width * height, 0);
     // Align the reflected origin to the same grid lattice. The requested axis
     // can differ from a grid boundary by a few float ULPs, e.g. 5.4 / 0.05f.
-    const double origin = grid.info.origin.position.x;
-    const double reflected_span = std::round ((2.0 * axis - 2.0 * origin) / resolution) * resolution;
+    const double origin              = grid.info.origin.position.x;
+    const double reflected_span      = std::round ((2.0 * axis - 2.0 * origin) / resolution) * resolution;
     reflected.info.origin.position.x = origin + reflected_span - static_cast<double> (width) * resolution;
     natto_map::rasterize_keepout_zones (reflected, zones);
     for (size_t y = 0; y < height; ++y) {
@@ -333,7 +332,7 @@ void astar_planner::create_costmap () {
     // Keepout sources retain their full inflation, even inside the start area
     // or where a keepout zone overlaps a wall in the raw map.
     nav_msgs::msg::OccupancyGrid keepout_map;
-    std::vector<float> local_inflation;
+    std::vector<float>           local_inflation;
     if (!start_area_bounds_.empty ()) {
         keepout_map = raw_map_;
         keepout_map.data.assign (costmap_.data.size (), 0);
@@ -363,10 +362,10 @@ void astar_planner::create_costmap () {
                     int nx = x + dx;
                     if (nx < 0 || nx >= width) continue;
 
-                    size_t idx  = static_cast<size_t> (ny * width + nx);
-                    float dist  = std::hypotf (static_cast<float> (dx) * resolution, static_cast<float> (dy) * resolution);
-                    float inner = local_inflation.empty () || keepout_source ? inflation_m : local_inflation[idx];
-                    float outer = inner + offset_m;
+                    size_t idx   = static_cast<size_t> (ny * width + nx);
+                    float  dist  = std::hypotf (static_cast<float> (dx) * resolution, static_cast<float> (dy) * resolution);
+                    float  inner = local_inflation.empty () || keepout_source ? inflation_m : local_inflation[idx];
+                    float  outer = inner + offset_m;
 
                     int8_t new_cost = 0;
                     if (dist <= inner) {
@@ -756,7 +755,7 @@ nav_msgs::msg::Path astar_planner::angular_astar (const nav_msgs::msg::Path &lin
     };
 
     auto to_index = [&] (size_t ix, size_t th) -> size_t { return th * N + ix; };
-    auto bin_yaw = [&] (size_t th) {
+    auto bin_yaw  = [&] (size_t th) {
         const double yaw = (static_cast<double> (th) + 0.5) * theta_resolution_deg_ * M_PI / 180.0;
         return angular_grid_reflect_yaw_ ? M_PI - yaw : yaw;
     };
@@ -996,13 +995,13 @@ std::pair<size_t, size_t> astar_planner::to_grid (double x, double y) {
         // Use the same reflected lattice for poses and cost-gradient queries
         // as for keepout cells. In particular, x=3.9 lies just below a 0.05f
         // grid boundary in the native frame, unlike its reference-side pose.
-        const double origin = raw_map_.info.origin.position.x;
-        const double resolution = raw_map_.info.resolution;
-        const double axis = keepout_grid_reflection_x_.front ();
-        const double span_cells = std::round ((2.0 * axis - 2.0 * origin) / resolution);
+        const double origin         = raw_map_.info.origin.position.x;
+        const double resolution     = raw_map_.info.resolution;
+        const double axis           = keepout_grid_reflection_x_.front ();
+        const double span_cells     = std::round ((2.0 * axis - 2.0 * origin) / resolution);
         const double reference_cell = std::floor ((2.0 * axis - x - origin) / resolution);
         const double reflected_cell = span_cells - 1.0 - reference_cell;
-        gx = reflected_cell >= 0.0 && reflected_cell < raw_map_.info.width ? static_cast<size_t> (reflected_cell) : raw_map_.info.width;
+        gx                          = reflected_cell >= 0.0 && reflected_cell < raw_map_.info.width ? static_cast<size_t> (reflected_cell) : raw_map_.info.width;
     }
     return std::make_pair (gx, gy);
 }

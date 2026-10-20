@@ -41,11 +41,11 @@ holonomic_pure_pursuit::holonomic_pure_pursuit (const rclcpp::NodeOptions &optio
 
     timer_ = this->create_wall_timer (std::chrono::milliseconds (static_cast<int> (1000.0 / frequency)), std::bind (&holonomic_pure_pursuit::timer_callback, this));
 
-    lookahead_time_                 = this->declare_parameter<double> ("lookahead_time_s", 1.0);
-    min_lookahead_distance_         = this->declare_parameter<double> ("min_lookahead_distance_m", 0.1);
-    max_lookahead_distance_         = this->declare_parameter<double> ("max_lookahead_distance_m", 1.0);
-    yaw_speed_p_                    = this->declare_parameter<double> ("yaw_speed_p", 1.0);
-    curvature_lookahead_distance_   = this->declare_parameter<double> ("curvature_lookahead_distance_m", 0.3);
+    lookahead_time_               = this->declare_parameter<double> ("lookahead_time_s", 1.0);
+    min_lookahead_distance_       = this->declare_parameter<double> ("min_lookahead_distance_m", 0.1);
+    max_lookahead_distance_       = this->declare_parameter<double> ("max_lookahead_distance_m", 1.0);
+    yaw_speed_p_                  = this->declare_parameter<double> ("yaw_speed_p", 1.0);
+    curvature_lookahead_distance_ = this->declare_parameter<double> ("curvature_lookahead_distance_m", 0.3);
     if (!std::isfinite (curvature_lookahead_distance_) || curvature_lookahead_distance_ <= 0.0) {
         throw std::invalid_argument ("curvature_lookahead_distance_m must be finite and positive");
     }
@@ -176,11 +176,11 @@ void holonomic_pure_pursuit::timer_callback () {
     predicted_speed        = std::clamp (predicted_speed, 0.0, max_speed_xy_m_s_);
     lookahead_distance_    = std::clamp (lookahead_time_ * predicted_speed, min_lookahead_distance_, max_lookahead_distance_);
 
-    const auto lookahead = path_geometry_.lookahead (current_pose_->pose.position.x, current_pose_->pose.position.y, closest_index, lookahead_distance_);
-    double current_yaw   = tf2::getYaw (current_pose_->pose.orientation);
-    double lookahead_x   = lookahead.x;
-    double lookahead_y   = lookahead.y;
-    double lookahead_yaw = lookahead.yaw;
+    const auto lookahead     = path_geometry_.lookahead (current_pose_->pose.position.x, current_pose_->pose.position.y, closest_index, lookahead_distance_);
+    double     current_yaw   = tf2::getYaw (current_pose_->pose.orientation);
+    double     lookahead_x   = lookahead.x;
+    double     lookahead_y   = lookahead.y;
+    double     lookahead_yaw = lookahead.yaw;
 
     double dx = lookahead_x - current_pose_->pose.position.x;
     double dy = lookahead_y - current_pose_->pose.position.y;

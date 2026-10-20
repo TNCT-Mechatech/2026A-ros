@@ -1,10 +1,10 @@
 #pragma once
 
 #include <algorithm>
-#include <limits>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 class VRFT {
@@ -55,7 +55,7 @@ class VRFT {
         float      b[3]    = {0.0f};
         const auto samples = diagnosticSamples ();
 
-        for (const auto& sample : samples) {
+        for (const auto &sample : samples) {
             if (!sample.used_for_regression) continue;
 
             float phi[3] = {sample.kp_coefficient, sample.ki_coefficient, sample.kd_coefficient};
@@ -78,46 +78,53 @@ class VRFT {
 
     struct PiResult {
         double kp = 0, ki = 0;
-        double r_squared = -std::numeric_limits<double>::infinity();
+        double r_squared    = -std::numeric_limits<double>::infinity ();
         size_t used_samples = 0;
     };
 
     // Identify the actual PI used by STM, rather than fit a PID and discard Kd.
     // Solve two-variable nonnegative least squares, including both boundary cases.
     PiResult getPI () const {
-        PiResult result;
+        PiResult   result;
         const auto samples = diagnosticSamples ();
-        double pp = 0, pi = 0, ii = 0, pu = 0, iu = 0, sum_u = 0;
+        double     pp = 0, pi = 0, ii = 0, pu = 0, iu = 0, sum_u = 0;
         for (const auto &s : samples) {
             if (!s.used_for_regression) continue;
             const double p = s.kp_coefficient, integral = s.ki_coefficient;
-            if (!std::isfinite(p) || !std::isfinite(integral) || !std::isfinite(s.input)) return result;
-            pp += p * p; pi += p * integral; ii += integral * integral;
-            pu += p * s.input; iu += integral * s.input; sum_u += s.input;
+            if (!std::isfinite (p) || !std::isfinite (integral) || !std::isfinite (s.input)) return result;
+            pp += p * p;
+            pi += p * integral;
+            ii += integral * integral;
+            pu += p * s.input;
+            iu += integral * s.input;
+            sum_u += s.input;
             ++result.used_samples;
         }
         const double determinant = pp * ii - pi * pi;
-        if (result.used_samples < 3 || pp <= 0 || ii <= 0 ||
-            determinant <= 1e-8 * pp * ii) return result;
-        const double free_p = (pu * ii - iu * pi) / determinant;
-        const double free_i = (iu * pp - pu * pi) / determinant;
-        const std::array<std::array<double, 2>, 4> candidates = {{
-            {0, 0}, {std::max(0.0, pu / pp), 0}, {0, std::max(0.0, iu / ii)},
-            {free_p, free_i}}};
-        double best = std::numeric_limits<double>::infinity(), variance = 0;
+        if (result.used_samples < 3 || pp <= 0 || ii <= 0 || determinant <= 1e-8 * pp * ii) return result;
+        const double                               free_p     = (pu * ii - iu * pi) / determinant;
+        const double                               free_i     = (iu * pp - pu * pi) / determinant;
+        const std::array<std::array<double, 2>, 4> candidates = {
+            {{0, 0}, {std::max (0.0, pu / pp), 0}, {0, std::max (0.0, iu / ii)}, {free_p, free_i}}
+        };
+        double       best = std::numeric_limits<double>::infinity (), variance = 0;
         const double mean = sum_u / result.used_samples;
         for (const auto &s : samples)
-            if (s.used_for_regression) variance += std::pow(s.input - mean, 2);
+            if (s.used_for_regression) variance += std::pow (s.input - mean, 2);
         for (const auto &gain : candidates) {
-            if (gain[0] < 0 || gain[1] < 0 || !std::isfinite(gain[0]) || !std::isfinite(gain[1])) continue;
+            if (gain[0] < 0 || gain[1] < 0 || !std::isfinite (gain[0]) || !std::isfinite (gain[1])) continue;
             double residual = 0;
             for (const auto &s : samples) {
                 if (!s.used_for_regression) continue;
-                residual += std::pow(s.input - gain[0] * s.kp_coefficient - gain[1] * s.ki_coefficient, 2);
+                residual += std::pow (s.input - gain[0] * s.kp_coefficient - gain[1] * s.ki_coefficient, 2);
             }
-            if (residual < best) { best = residual; result.kp = gain[0]; result.ki = gain[1]; }
+            if (residual < best) {
+                best      = residual;
+                result.kp = gain[0];
+                result.ki = gain[1];
+            }
         }
-        if (variance > std::numeric_limits<double>::epsilon()) result.r_squared = 1 - best / variance;
+        if (variance > std::numeric_limits<double>::epsilon ()) result.r_squared = 1 - best / variance;
         return result;
     }
 
@@ -190,7 +197,7 @@ class VRFT {
         return count_ >= 3 && responseTime_ > 0.0f && times_.size () == count_;
     }
 
-    bool solve3x3 (float A[3][3], float b[3], std::array<float, 3>& x) const {
+    bool solve3x3 (float A[3][3], float b[3], std::array<float, 3> &x) const {
         const int N = 3;
 
         for (int i = 0; i < N; i++) {
