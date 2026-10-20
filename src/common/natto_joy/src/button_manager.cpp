@@ -709,7 +709,9 @@ void button_manager::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
     if (has_power_button) power_publisher_->publish (power_msg_);
     allow_auto_drive_publisher_->publish (allow_auto_drive_msg_);
     if (!allow_auto_drive_msg_.data) {
-        joint_state_publisher_->publish (command_joint_state_msg_);
+        if (!command_joint_state_msg_.name.empty ()) {
+            joint_state_publisher_->publish (command_joint_state_msg_);
+        }
     } else {
         for (size_t i = 0; i < command_joint_state_always_msg_.name.size (); i++) {
             size_t index = 0;
@@ -722,7 +724,9 @@ void button_manager::joy_callback (const sensor_msgs::msg::Joy::SharedPtr msg) {
             command_joint_state_always_msg_.position[i] = command_joint_state_msg_.position[index];
             command_joint_state_always_msg_.velocity[i] = command_joint_state_msg_.velocity[index];
         }
-        joint_state_publisher_->publish (command_joint_state_always_msg_);
+        if (!command_joint_state_always_msg_.name.empty ()) {
+            joint_state_publisher_->publish (command_joint_state_always_msg_);
+        }
     }
 }
 

@@ -64,11 +64,25 @@ def packet(frame_id, payload, corrupt=False):
 
 
 def feedback(frame_id=None, corrupt=False, rps=1., count=0):
-    # ARM/native ABI: pad int64 to offset 16, bool at 28, total 32 bytes.
-    payload = struct.pack('<ffi4xqf?3x', rps, 0., 0, count, 0., False)
+    # ARM/native ABI: raw count at 16, applied IDs at 32/36, total 40 bytes.
+    payload = struct.pack('<ffi4xqf?3xII', rps, 0., 0, count, 0., False, 0, 0)
     if frame_id is not None:
         return packet(frame_id, payload, corrupt)
     return b''.join(packet(16 + i, payload, corrupt) for i in range(4)) + packet(20, bytes([1, 0, 1, 0]))
+
+
+def with_identities(data, identities):
+    """Simulate firmware's committed IDs, preserving deliberate checksum faults."""
+    result = bytearray()
+    for frame in data.split(b'\0'):
+        if not frame:
+            continue
+        raw = bytearray(decode(frame))
+        corrupt = sum(raw[:-1]) & 255 != raw[-1]
+        if 16 <= raw[0] <= 19 and len(raw) == 42:
+            struct.pack_into('<II', raw, 33, *identities[raw[0] - 16])
+        result.extend(packet(raw[0], bytes(raw[1:-1]), corrupt))
+    return bytes(result)
 
 
 class SerialPTY(unittest.TestCase):
@@ -91,6 +105,7 @@ class SerialPTY(unittest.TestCase):
         self.buffers = [bytearray() for _ in range(3)]
         self.packets = [[] for _ in range(3)]
         self.frames = [[] for _ in range(3)]
+        self.identities = [[(0, 0)] * 4 for _ in range(3)]
         self.command_batches = [[0.] * 4 for _ in range(3)]
         self.joints, self.switches = [], []
         self.node.create_subscription(JointState, '/joint_states', self.joints.append, qos_profile_sensor_data)
@@ -106,6 +121,7 @@ class SerialPTY(unittest.TestCase):
         self.pairs[i] = (master, slave)
         self.paths[i].symlink_to(os.ttyname(slave))
         self.buffers[i].clear()
+        self.identities[i] = [(0, 0)] * 4
 
     def detach(self, i):
         self.paths[i].unlink(missing_ok=True)
@@ -178,12 +194,14 @@ class SerialPTY(unittest.TestCase):
                 if frame:
                     raw = decode(frame)
                     frame_id = raw[0]
-                    sizes = {**{j: 44 for j in range(4)}, **{j: 4 for j in range(4, 8)},
+                    sizes = {**{j: 52 for j in range(4)}, **{j: 4 for j in range(4, 8)},
                              **{j: 8 for j in range(8, 12)}, **{j: 4 for j in range(12, 16)}}
                     self.assertIn(frame_id, sizes)
                     self.assertEqual(len(raw), sizes[frame_id] + 2)
                     self.assertEqual(sum(raw[:-1]) & 255, raw[-1])
                     self.frames[i].append((frame_id, bytes(raw[1:-1])))
+                    if frame_id < 4:
+                        self.identities[i][frame_id] = struct.unpack_from('<II', raw, 45)
                     if 4 <= frame_id <= 7 or 12 <= frame_id <= 15:
                         motor = frame_id % 4
                         self.command_batches[i][motor] = struct.unpack_from('<f', raw, 1)[0]
@@ -219,7 +237,7 @@ class SerialPTY(unittest.TestCase):
         while time.monotonic() < end:
             if time.monotonic() >= next_send:
                 for i in receive:
-                    os.write(self.pairs[i][0], feedback() if packet is None else packet)
+                    os.write(self.pairs[i][0], with_identities(feedback() if packet is None else packet, self.identities[i]))
                 if neutral is not None:
                     self.command(neutral)
                 next_send = time.monotonic() + .025
@@ -340,6 +358,8 @@ class SerialPTY(unittest.TestCase):
         self.start(monitor_updates=False)
         self.run_for(.4, [2], False)
         self.all_zero([0, 1])  # Neutral is still required after opening.
+        # Even with receive watchdog disabled, initial configuration must be confirmed.
+        self.run_for(.2, range(3), True)
         self.run_for(.15, [2], True)
         before = [self.attempts(i) for i in [0, 1]]
         self.clear()
@@ -364,6 +384,7 @@ class SerialPTY(unittest.TestCase):
         self.run_for(.3, [2], False)
         self.all_zero([0])
         self.moving([1])
+        self.run_for(.2, [0, 2], False)
         self.run_for(.15, [2], True)
         self.clear()
         self.run_for(.1, [2], False)
@@ -371,6 +392,7 @@ class SerialPTY(unittest.TestCase):
 
     def test_successful_non_feedback_frames_reset_mechanism_failure_count(self):
         self.start()
+        self.run_for(.3, range(3), True)
         # A registered switch frame counts as a successful update, and the
         # terminal -1 in drain must not overwrite that success.
         frame = packet(20, bytes([0, 1, 0, 1]))
@@ -457,7 +479,7 @@ class SerialPTY(unittest.TestCase):
         for records in self.frames:
             self.assertEqual([fid for fid, _ in records[:8]], [0, 1, 2, 3, 4, 5, 6, 7] if records is self.frames[2] else [0, 1, 2, 3, 12, 13, 14, 15])
         for i, (_, payload) in enumerate(self.frames[2][:4]):
-            self.assertEqual(len(payload), 44)
+            self.assertEqual(len(payload), 52)
             # All encoders must agree with motor output inside the STM PID.
             self.assertEqual(payload[28], 1)
             self.assertEqual(payload[30], 1)
@@ -509,7 +531,7 @@ class SerialPTY(unittest.TestCase):
         self.arm_and_move()
         # 100Hz feedback, exactly the STM's five consecutive frames per cycle.
         for count in range(60):
-            os.write(self.pairs[2][0], feedback(count=count * 800))
+            os.write(self.pairs[2][0], with_identities(feedback(count=count * 800), self.identities[2]))
             self.run_for(.01, [0, 1], False)
         self.wait_for(lambda: self.joints and self.joints[-1].position[0] <= -59 * 2 * 3.141592653589793, timeout=.15)
         self.assertEqual(self.value(2, 'drain_budget_hits'), '0')
@@ -544,6 +566,7 @@ class ParamCheckerPTY(unittest.TestCase):
         tty.setraw(self.slave)
         self.process = None
         self.log = None
+        self.identities = [(0, 0)] * 4
 
     def check_mode(self, pid):
         import csv
@@ -567,7 +590,7 @@ class ParamCheckerPTY(unittest.TestCase):
             if time.monotonic() >= next_send and self.process.poll() is None:
                 self.joy_pub.publish(Joy(axes=[.5, 0., 0.], buttons=[]))
                 # Feedback arrives as five frames, including ID20.
-                os.write(self.master, feedback(rps=math.sin(tick / 5), count=tick * 100))
+                os.write(self.master, with_identities(feedback(rps=math.sin(tick / 5), count=tick * 100), self.identities))
                 tick += 1
                 next_send = time.monotonic() + .01
             while select.select([self.master], [], [], 0)[0]:
@@ -580,13 +603,15 @@ class ParamCheckerPTY(unittest.TestCase):
                     raw = decode(frame)
                     self.assertEqual(sum(raw[:-1]) & 255, raw[-1])
                     frames.append((raw[0], bytes(raw[1:-1])))
+                    if raw[0] < 4:
+                        self.identities[raw[0]] = struct.unpack_from('<II', raw, 45)
             if self.process.poll() is not None:
                 break
         self.assertEqual(self.process.poll(), 0, (folder / 'node.log').read_text())
         base = 4 if pid else 12
         self.assertEqual([fid for fid, _ in frames[:8]], [0, 1, 2, 3] + list(range(base, base + 4)))
         for _, payload in frames[:4]:
-            self.assertEqual(len(payload), 44)
+            self.assertEqual(len(payload), 52)
             self.assertEqual(payload[30], int(pid))
             for offset, expected in [(4, .12), (8, .34), (12, .56)]:
                 self.assertAlmostEqual(struct.unpack_from('<f', payload, offset)[0], expected, places=6)
@@ -694,6 +719,8 @@ class ParamCheckerPTY(unittest.TestCase):
                     self.assertEqual(sum(raw[:-1]) & 255, raw[-1])
                     fid, payload = raw[0], bytes(raw[1:-1])
                     frames.append((fid, payload, time.monotonic() - began))
+                    if fid < 4:
+                        self.identities[fid] = struct.unpack_from('<II', payload, 44)
                     if fid == 6:
                         input_rps = struct.unpack('<f', payload)[0]
             instant = time.monotonic()
@@ -705,10 +732,10 @@ class ParamCheckerPTY(unittest.TestCase):
                     relative += input_rps * 200000. * (instant - previous)
                 previous = instant
                 if target_feedback:
-                    os.write(self.master, feedback(rps=input_rps, count=origin + round(relative)))
+                    os.write(self.master, with_identities(feedback(rps=input_rps, count=origin + round(relative)), self.identities))
                 else:
                     # Feedback from other motors must not arm motor2 or extend its deadline.
-                    os.write(self.master, feedback(frame_id=16, count=origin))
+                    os.write(self.master, with_identities(feedback(frame_id=16, count=origin), self.identities))
                 next_send = instant + .008
             if self.process.poll() is not None:
                 break

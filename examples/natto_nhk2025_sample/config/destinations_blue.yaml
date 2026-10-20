@@ -2,21 +2,26 @@ frame_id: map
 destinations:
   flag:
     label: 旗ねらい
-    x: 3.7
-    y: 4.7
-    yaw_deg: 90.0
+    x: 1.08
+    y: 5.61
+    yaw_deg: 12.0
+  bucket_3:
+    label: バケツ3ねらい
+    x: 0.82
+    y: 7.77
+    yaw_deg: 26.0
   home:
     label: 帰還
-    x: 9.5
-    y: 3.4
-    yaw_deg: 0.0
-  behind:
-    label: 旗後ろ
-    x: 4.5
-    y: 1.7
+    x: 1.63
+    y: 9.89
     yaw_deg: 90.0
-  far:
-    label: 遠方
-    x: 1.7
-    y: 5.0
-    yaw_deg: 270.0
+  avoid:
+    label: 回避
+    x: 4.40
+    y: 9.00
+    yaw_deg: 90.0
+  bucket_enemy:
+    label: 敵バケツねらい
+    x: 0.82
+    y: 8.80
+    yaw_deg: 335.0

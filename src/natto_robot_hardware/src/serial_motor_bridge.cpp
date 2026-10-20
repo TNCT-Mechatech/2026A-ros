@@ -236,7 +236,7 @@ class SerialMotorBridge : public rclcpp::Node {
             return false;
         }
 
-        if (watchdog_->check (Watchdog::Clock::now ()) != Watchdog::State::Ready) {
+        if (!frames_.configuration.ready () || watchdog_->check (Watchdog::Clock::now ()) != Watchdog::State::Ready) {
             set_zero_command ();
         }
         try {
@@ -303,6 +303,10 @@ class SerialMotorBridge : public rclcpp::Node {
         }
 
         const bool neutral = std::all_of (wheel_rps.begin (), wheel_rps.end (), [] (double value) { return value == 0.0; });
+        if (!frames_.configuration.ready ()) {
+            send_stop ();
+            return;
+        }
         if (!watchdog_->command (Watchdog::Clock::now (), neutral)) {
             send_stop ();
             return;
@@ -392,6 +396,7 @@ class SerialMotorBridge : public rclcpp::Node {
         DrainResult received;
         try {
             received = frames_.drain (*serial_);
+            frames_.service_initialization (*serial_);
             invalid_packets_ += received.invalid;
             unregistered_frames_ += received.unregistered;
             drain_budget_hits_ += received.budget_exhausted;
@@ -408,7 +413,14 @@ class SerialMotorBridge : public rclcpp::Node {
         }
 
         const auto received_time = Watchdog::Clock::now ();
-        bool       any_feedback  = false;
+        if (received.configuration_lost) {
+            watchdog_->reset (received_time);
+            feedback_seen_.fill (false);
+            feedback_cohort_.fill (false);
+            set_zero_command ();
+            RCLCPP_WARN (get_logger (), "STM configuration changed/reset; stopping and reinitializing");
+        }
+        bool any_feedback = false;
         for (size_t i = 0; i < MOTORS; ++i) {
             if (received.motor_updated[i]) {
                 feedback_seen_[i] = feedback_cohort_[i] = true;
@@ -421,7 +433,7 @@ class SerialMotorBridge : public rclcpp::Node {
             feedback_cohort_.fill (false);
         }
         if (any_feedback) {
-            if (std::all_of (feedback_seen_.begin (), feedback_seen_.end (), [] (bool v) { return v; })) publish_joint_state (current_time);
+            if (frames_.configuration.ready () && std::all_of (feedback_seen_.begin (), feedback_seen_.end (), [] (bool v) { return v; })) publish_joint_state (current_time);
             publish_feedback (received.motor_updated);
         }
         if (received.switches_updated) {
@@ -455,12 +467,18 @@ class SerialMotorBridge : public rclcpp::Node {
         const double command_age  = watchdog_->command_age (steady_time);
         const double feedback_age = watchdog_->feedback_age (steady_time);
 
-        if (!serial_connected_) {
+        if (frames_.configuration.failed ()) {
+            status.level   = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+            status.message = frames_.configuration.error ();
+        } else if (!serial_connected_) {
             status.level   = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
             status.message = "Serial disconnected";
         } else if (state == Watchdog::State::FeedbackTimeout) {
             status.level   = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
             status.message = "Feedback timeout";
+        } else if (!frames_.configuration.ready ()) {
+            status.level   = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+            status.message = frames_.configuration.state ();
         } else if (state != Watchdog::State::Ready) {
             status.level   = diagnostic_msgs::msg::DiagnosticStatus::WARN;
             status.message = Watchdog::name (state);
@@ -487,6 +505,18 @@ class SerialMotorBridge : public rclcpp::Node {
         add_value ("feedback_age_sec", std::to_string (feedback_age));
         add_value ("pid_enabled", pid ? "true" : "false");
         add_value ("command_mode", command_mode_);
+        add_value ("configuration_state", frames_.configuration.state ());
+        add_value ("configuration_ready", frames_.configuration.ready () ? "true" : "false");
+        add_value ("session_id", std::to_string (frames_.configuration.session_id ()));
+        for (size_t i = 0; i < MOTORS; ++i) {
+            const auto suffix = std::to_string (i);
+            add_value ("expected_config_id_" + suffix, std::to_string (frames_.configuration.config_id (i)));
+            add_value ("applied_session_id_" + suffix, std::to_string (frames_.configuration.applied_session_id (i)));
+            add_value ("applied_config_id_" + suffix, std::to_string (frames_.configuration.applied_config_id (i)));
+            add_value ("configuration_confirmed_" + suffix, frames_.configuration.confirmed (i) ? "true" : "false");
+            add_value ("initialization_attempts_" + suffix, std::to_string (frames_.configuration.attempts (i)));
+            add_value ("initialization_result_" + suffix, std::to_string (frames_.configuration.result (i)));
+        }
         if (command_mode_ == "open_loop_normalized") {
             add_value ("open_loop_output_limit", std::to_string (open_loop_output_limit_));
             for (size_t i = 0; i < 4; ++i) {

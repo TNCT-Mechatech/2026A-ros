@@ -668,3 +668,9 @@ Apache License 2.0
 ROS 2 Diagnostics、ROS Graph監視、MCAP記録、PlotJuggler/Foxglove向け出力は
 [natto_system_monitorの手順](src/monitoring/natto_system_monitor/README.md)を参照してください。
 実topic/nodeの調査結果、起動引数、閾値、診断状態、検証方法をまとめています。
+
+# STM32の速度・位置テスト（複数台同時接続）
+
+足回り・注入・ロールのSTMへ同時接続する端末テストを追加しています。
+ビルド・起動・接続先別の指令方法は
+[stm32_pos_control_testの手順](src/stm32_pos_control_test/README.md)を参照してください。

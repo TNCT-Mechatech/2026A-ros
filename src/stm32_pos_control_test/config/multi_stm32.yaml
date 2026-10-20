@@ -1,0 +1,30 @@
+# Board names become ROS namespaces. Motor numbers 0..3 are local to each board.
+default_board: wheel
+parameters:
+  target_motor_index: 0
+  communication_period_seconds: 0.01
+  feedback_timeout_seconds: 1.0
+  max_motor_rps: 0.03
+  stop_mode: false
+  reset_encoder_origin: false
+  reset_encoder_origin_with_switch: false
+  encoder_origin_switch_state: true
+  encoder_pulses_per_revolution: [2048, 2048, 2048, 2048]
+  # If a board has no gain file, accept feedback/status/stop only.
+  allow_missing_pid_gains: true
+boards:
+  wheel:
+    serial_path: /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02
+    pid_gain_path: ~/.ros/natto/pid_gain.yaml
+    encoder_counts_per_revolution: [334506.6666666667, 334506.6666666667, 334506.6666666667, 334506.6666666667]
+    encoder_polarities: [-1, -1, -1, -1]
+  inject:
+    serial_path: /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF505071655067254019-if02
+    pid_gain_path: ~/.ros/natto/inject_pid_gain.yaml
+    encoder_counts_per_revolution: [581632.0, 334506.6666666667, 334506.6666666667, 334506.6666666667]
+    encoder_polarities: [1, 1, 1, 1]
+  roll:
+    serial_path: /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF555185754867214745-if02
+    pid_gain_path: ~/.ros/natto/roll_pid_gain.yaml
+    encoder_counts_per_revolution: [581632.0, 334506.6666666667, 334506.6666666667, 334506.6666666667]
+    encoder_polarities: [1, 1, 1, 1]

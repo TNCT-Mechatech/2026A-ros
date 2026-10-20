@@ -1,9 +1,16 @@
 #pragma once
 
+#include "rack_controller.hpp"
+#include "rack_count_controller.hpp"
+#include "rack_velocity_profile.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <natto_system_monitor/serial_diagnostics.hpp>
 #include <natto_system_monitor/serial_restart.hpp>
+
+#include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/int64.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <termios.h>  // speed_t
 
@@ -46,10 +53,12 @@ class SerialNode : public rclcpp::Node {
     bool try_open_serial ();
     void close_serial ();
     void send_stop ();
-    void gain_setup () const;
+    void setup_rack ();
+    void publish_rack ();
 
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr         subscription_;
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr publisher_;  // Publisher の宣言
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr command_duty_pub_;
     rclcpp::TimerBase::SharedPtr                                   timer_;
 
     using SerialPort = natto_system_monitor::ObservedSerial<LinuxHardwareSerial>;
@@ -69,6 +78,23 @@ class SerialNode : public rclcpp::Node {
 
     natto_serial::SerialFrames                                   frames_;
     rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr switch_pub_;
+
+    std::unique_ptr<inject2026a::RackController>         rack_;
+    std::unique_ptr<inject2026a::RackCountController>    rack_count_;
+    std::unique_ptr<inject2026a::RackVelocityProfile>    rack_velocity_;
+    bool                                                 rack_start_held_{false}, rack_start_pending_{false};
+    bool                                                 rack_button4_held_{false}, rack_button5_held_{false};
+    int64_t                                              rack_primary_target_{-30}, rack_secondary_target_{0}, rack_requested_target_{-30};
+    double                                               rack_profile_counts_per_degree_{0};
+    double                                               rack_open_loop_duty_{0.2};
+    inject2026a::RackController::Command                 rack_command_;
+    bool                                                 rack_switch_active_state_{true};
+    size_t                                               rack_switch_index_{2};
+    std::string                                          rack_last_state_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr rack_angle_pub_, rack_target_pub_, rack_goal_pub_;
+    rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr   rack_raw_pub_;
+    rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr   rack_relative_pub_, rack_relative_target_pub_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr  rack_state_pub_;
 
     bool s1, s2, s3, s4, s5, s6;
 

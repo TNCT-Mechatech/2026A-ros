@@ -8,13 +8,63 @@
 #if defined(__linux__) || defined(__APPLE__)
 
 #include "../LinuxHardwareSerial.hpp"
+#include <chrono>
+#include <poll.h>
 #include <system_error>
 
 extern "C"
 {
     int fdwrite(int fd, unsigned char *data, unsigned int len)
     {
-        return write(fd, data, len);
+        // A nonblocking USB serial write can temporarily return EAGAIN or send
+        // only part of a frame. Finish that same frame without duplicating bytes.
+        // Bound the whole operation, including EINTR retries, so a stalled port
+        // cannot hold up command watchdogs indefinitely (10ms per motor frame).
+        using Clock = std::chrono::steady_clock;
+        const auto deadline = Clock::now() + std::chrono::milliseconds(10);
+        unsigned int written = 0;
+        while (written < len) {
+            if (Clock::now() >= deadline) {
+                errno = ETIMEDOUT;
+                return -1;
+            }
+            const ssize_t result = write(fd, data + written, len - written);
+            if (result > 0) {
+                written += static_cast<unsigned int>(result);
+                continue;
+            }
+            if (result < 0) {
+                if (errno == EINTR) continue;
+                if (errno != EAGAIN && errno != EWOULDBLOCK) return -1;
+            }
+
+            const auto remaining = deadline - Clock::now();
+            if (remaining <= Clock::duration::zero()) {
+                errno = ETIMEDOUT;
+                return -1;
+            }
+            // Round up to milliseconds; poll(0) would spin near the deadline.
+            const auto wait_ms = std::chrono::ceil<std::chrono::milliseconds>(remaining).count();
+            pollfd descriptor{fd, POLLOUT, 0};
+            const int ready = poll(&descriptor, 1, static_cast<int>(wait_ms));
+            if (ready < 0) {
+                if (errno == EINTR) continue;
+                return -1;
+            }
+            if (ready == 0) {
+                errno = ETIMEDOUT;
+                return -1;
+            }
+            if (descriptor.revents & POLLNVAL) {
+                errno = EBADF;
+                return -1;
+            }
+            if (descriptor.revents & (POLLERR | POLLHUP)) {
+                errno = EIO;
+                return -1;
+            }
+        }
+        return static_cast<int>(written);
     }
 
     int fdread(int fd)

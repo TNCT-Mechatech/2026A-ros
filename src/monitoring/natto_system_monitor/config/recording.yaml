@@ -24,6 +24,7 @@ topics:
   - /inject/joy
   - /inject/fb_speed_topic
   - /roll/fb_speed_topic
+  - /roll/command_duty
   - /diagnostics
   - /diagnostics_agg
   - /diagnostics_toplevel_state

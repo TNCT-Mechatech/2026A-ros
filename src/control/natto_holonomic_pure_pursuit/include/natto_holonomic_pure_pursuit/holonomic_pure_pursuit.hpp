@@ -15,6 +15,7 @@
 #ifndef __HOLONOMIC_PURE_PURSUIT_HPP__
 #define __HOLONOMIC_PURE_PURSUIT_HPP__
 
+#include "natto_holonomic_pure_pursuit/path_geometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/utils.hpp"
 
@@ -47,6 +48,7 @@ class holonomic_pure_pursuit : public rclcpp::Node {
     double min_lookahead_distance_;          // 最小lookahead距離 [m]
     double max_lookahead_distance_;          // 最大lookahead距離 [m]
     double yaw_speed_p_;                     // ヨー速度比例ゲイン
+    double curvature_lookahead_distance_;    // 曲率計算用の固定経路長 [m]
     double curvature_deceleration_p_;        // 曲率減速用の比例ゲイン
     double min_curvature_speed_m_s_;         // 曲率減速用の最低速度 [m/s]
     double yaw_deceleration_p_;              // ヨー減速用の比例ゲイン
@@ -71,6 +73,9 @@ class holonomic_pure_pursuit : public rclcpp::Node {
     geometry_msgs::msg::PoseStamped::SharedPtr  current_pose_;
     geometry_msgs::msg::TwistStamped::SharedPtr last_cmd_vel_;
     nav_msgs::msg::Path::SharedPtr              path_;
+
+    path_geometry::PathGeometry path_geometry_;
+    void                        update_path_geometry ();
 
     void timer_callback ();
     void pose_callback (const geometry_msgs::msg::PoseStamped::SharedPtr msg);

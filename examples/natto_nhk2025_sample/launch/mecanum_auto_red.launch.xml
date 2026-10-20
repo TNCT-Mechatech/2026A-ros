@@ -4,8 +4,9 @@
     <arg name="launch_inject" default="true" description="Start both inject and roll nodes via inject2026A"/>
     <arg name="inject_serial_config" default="$(find-pkg-share inject2026A)/config/serial_ports.yaml"/>
     <arg name="inject_joy_topic" default="/inject/joy"/>
+    <arg name="inject_pid" default="true" description="Rack position PID; false selects Duty control"/>
     <arg name="launch_system_monitor" default="true"/>
-    <arg name="record" default="false"/>
+    <arg name="record" default="true"/>
     <arg name="rosgraph" default="true"/>
     <arg name="publish_pursuit_debug" default="false"/>
     <arg name="monitor_inject" default="$(var launch_inject)"/>
@@ -28,7 +29,7 @@
     <arg name="launch_dynamic_auto_control" default="true"/>
     <arg name="launch_static_auto_control" default="false"/>
     <arg name="speed_path_directory" default=""/>
-    <arg name="controller_max_xy_speed_m_s" default="1.0"/>
+    <arg name="controller_max_xy_speed_m_s" default="0.7"/>
     <arg name="controller_max_yaw_speed_rad_s" default="1.0"/>
     <arg name="lakibeam_hostip" default="0.0.0.0"/>
     <arg name="lakibeam_port_front" default="2368"/>
@@ -82,6 +83,7 @@
         <arg name="inject_serial_config" value="$(var inject_serial_config)"/>
         <arg name="inject_joy_topic" value="$(var inject_joy_topic)"/>
         <arg name="inject_auto_restart" value="$(var auto_serial_restart)"/>
+        <arg name="inject_pid" value="$(var inject_pid)"/>
         <arg name="monitor_mecanum_device" value="$(var serial_path)"/>
         <arg name="navigation_mode" value="$(var navigation_mode)"/>
         <arg name="destinations_path" value="$(var destinations_path)"/>

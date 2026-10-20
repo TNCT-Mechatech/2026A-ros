@@ -1,0 +1,35 @@
+param_check:
+  ros__parameters:
+    # Motor/switch indices are zero-based. Start between the mechanical end stops.
+    target_motor_index: 2
+    axis_y: 1
+    invert_axis: false
+    pid: false
+    stop_mode: false
+    measurement_max_duty: 0.2
+    measurement_max_rps: 0.5
+    measurement_seconds: 15.0
+    response_time_seconds: 0.3
+    # Position tests use a separate, lower speed than the velocity identification.
+    position_measurement_max_rps: 0.06
+    position_response_time_seconds: 2.0
+    position_filter_window_seconds: 0.1  # Non-overlapping count windows; 0.02..0.5s.
+    position_range_counts: 100        # verify: +/-100 counts from its start position.
+    position_measurement_range_counts: 1000
+    # Raw-count travel from the initial position; NOT an angle limit.
+    measurement_range_counts: 10000
+    limit_switch_index: 2
+    limit_switch_active_state: true
+    require_neutral_on_start: true
+    feedback_timeout_ms: 300
+    timeout_ms: 300
+    joy_deadband: 0.05
+    minimum_samples: 20
+    minimum_fit_r_squared: 0.7
+    # Verify against the injection board. These match inject2026A defaults.
+    encoder_ppr: [2048, 2048, 2048, 2048]
+    gear_rate: [1.0, 1.0, 1.0, 1.0]
+    encoder_polarities: [1, 1, -1, 1]
+    max_motor_rps: [0.5, 0.5, 0.5, 0.5]
+    reset_encoder_origin: [false, false, false, false]
+    reset_encoder_origin_with_switch: [false, false, false, false]

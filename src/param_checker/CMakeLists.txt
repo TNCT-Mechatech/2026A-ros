@@ -40,7 +40,7 @@ target_include_directories(param_checker PRIVATE
 
 target_compile_features(param_checker PRIVATE cxx_std_17)
 target_link_libraries(param_checker serial_bridge yaml-cpp)
-ament_target_dependencies(param_checker rclcpp sensor_msgs debug_msgs natto_robot_hardware)
+ament_target_dependencies(param_checker rclcpp sensor_msgs std_msgs debug_msgs natto_robot_hardware)
 
 add_executable(position_checker src/position_main.cpp)
 target_include_directories(position_checker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -54,6 +54,15 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_single_motor test/test_single_motor.cpp)
+  target_include_directories(test_single_motor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_compile_features(test_single_motor PRIVATE cxx_std_17)
+  target_link_libraries(test_single_motor yaml-cpp)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(single_motor_pipeline test/test_single_motor_pipeline.py
+    TIMEOUT 90
+    ENV VELOCITY_TEST_EXECUTABLE=$<TARGET_FILE:param_checker>
+        POSITION_TEST_EXECUTABLE=$<TARGET_FILE:position_checker>)
   ament_add_gtest(test_position_vrft test/test_position_vrft.cpp)
   target_include_directories(test_position_vrft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_compile_features(test_position_vrft PRIVATE cxx_std_17)

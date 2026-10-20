@@ -13,4 +13,10 @@ rclcpp_components_register_node(${PROJECT_NAME}
     EXECUTABLE astar_planner
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_start_area test/test_start_area.cpp TIMEOUT 60)
+  target_link_libraries(test_start_area ${PROJECT_NAME})
+endif()
+
 ament_auto_package(USE_SCOPED_HEADER_INSTALL_DIR)

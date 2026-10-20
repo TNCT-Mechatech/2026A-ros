@@ -1,5 +1,6 @@
 #pragma once
 
+#include "configuration_state.hpp"
 #include "serial_protocol.hpp"
 
 #include <SerialBridge.hpp>
@@ -18,16 +19,20 @@ struct DrainResult {
     bool                     budget_exhausted = false;
     std::array<bool, MOTORS> motor_updated{};
     bool                     switches_updated = false;
+    std::array<bool, MOTORS> ack_updated{};
+    bool                     configuration_lost = false;
 };
 
 // Packet storage owns all Message objects for the lifetime of SerialBridge.
 struct SerialFrames {
-    std::array<InitializationPacket, MOTORS>   init;
-    std::array<MotorCommandVelPacket, MOTORS>  velocity;
-    std::array<MotorCommandPosPacket, MOTORS>  position;
-    std::array<MotorCommandDutyPacket, MOTORS> duty;
-    std::array<MotorFeedbackPacket, MOTORS>    feedback;
-    SwitchFeedbackPacket                       switches;
+    std::array<InitializationPacket, MOTORS>    init;
+    std::array<MotorCommandVelPacket, MOTORS>   velocity;
+    std::array<MotorCommandPosPacket, MOTORS>   position;
+    std::array<MotorCommandDutyPacket, MOTORS>  duty;
+    std::array<MotorFeedbackPacket, MOTORS>     feedback;
+    std::array<InitializationAckPacket, MOTORS> ack;
+    SwitchFeedbackPacket                        switches;
+    ConfigurationState                          configuration;
 
     SerialFrames () {
         reset ();
@@ -39,11 +44,13 @@ struct SerialFrames {
             clear (position[i]);
             clear (duty[i]);
             clear (feedback[i]);
+            clear (ack[i]);
         }
         clear (switches);
     }
     void reset_received () {
         for (auto &packet : feedback) clear (packet);
+        for (auto &packet : ack) clear (packet);
         clear (switches);
     }
     void register_all (SerialBridge &serial) {
@@ -53,6 +60,7 @@ struct SerialFrames {
             add (serial, CMD_POS_FRAME_ID_BASE + i, position[i]);
             add (serial, CMD_DUTY_FRAME_ID_BASE + i, duty[i]);
             add (serial, FEEDBACK_FRAME_ID_BASE + i, feedback[i]);
+            add (serial, INIT_ACK_FRAME_ID_BASE + i, ack[i]);
         }
         add (serial, SWITCH_FEEDBACK_FRAME_ID, switches);
     }
@@ -61,8 +69,19 @@ struct SerialFrames {
         if (result != packet.size () + 3) throw std::runtime_error ("failed/short serial write for frame " + std::to_string (id));
         return result;
     }
-    void initialize (SerialBridge &serial) {
-        for (size_t i = 0; i < MOTORS; ++i) write (serial, INIT_FRAME_ID_BASE + i, init[i]);
+    void initialize (SerialBridge &serial, ConfigurationState::Time now = ConfigurationState::Clock::now ()) {
+        configuration.begin (init, now);
+        service_initialization (serial, now);
+    }
+    void service_initialization (SerialBridge &serial, ConfigurationState::Time now = ConfigurationState::Clock::now ()) {
+        configuration.check_timeout (now);
+        if (configuration.failed ()) throw std::runtime_error ("STM " + configuration.error ());
+        for (size_t i = 0; i < MOTORS; ++i)
+            if (configuration.due (i, now)) {
+                init[i].data = configuration.requested (i);
+                write (serial, INIT_FRAME_ID_BASE + i, init[i]);
+                configuration.sent (i, now);
+            }
     }
     DrainResult drain (SerialBridge &serial) {
         DrainResult result;
@@ -77,7 +96,18 @@ struct SerialFrames {
             result.unregistered += status == -3;
             // Preserve an error in a mixed batch; the terminating -1 is normal.
             if (result.status >= -1 || status < 0) result.status = status;
-            for (size_t i = 0; i < MOTORS; ++i) result.motor_updated[i] = feedback[i].was_updated () || result.motor_updated[i];
+            for (size_t i = 0; i < MOTORS; ++i) {
+                const bool ready = configuration.ready ();
+                if (ack[i].was_updated ()) {
+                    result.ack_updated[i] = true;
+                    configuration.observe_ack (i, ack[i].data, ConfigurationState::Clock::now ());
+                }
+                if (feedback[i].was_updated ()) {
+                    result.motor_updated[i] = true;
+                    configuration.observe_feedback (i, feedback[i].data, ConfigurationState::Clock::now ());
+                }
+                result.configuration_lost |= ready && !configuration.ready ();
+            }
             result.switches_updated = switches.was_updated () || result.switches_updated;
         }
         result.budget_exhausted = true;

@@ -12,6 +12,7 @@ namespace natto_serial {
 // Defaults are the Encoder constructors in STM main.cpp, not robot calibration.
 // All settings are explicit ROS parameters so each board can override them.
 inline void declare_initialization (rclcpp::Node &node, SerialFrames &frames, uint8_t pid_state, bool stop_mode, double max_rps, const std::vector<int64_t> &default_polarities) {
+    frames.configuration.set_timeouts (std::chrono::milliseconds (node.declare_parameter<int> ("initialization_retry_ms", 100)), std::chrono::milliseconds (node.declare_parameter<int> ("initialization_timeout_ms", 2000)));
     const auto ppr          = node.declare_parameter<std::vector<int64_t>> ("encoder_ppr", {2048, 2048, 2048, 2048});
     const auto gear         = node.declare_parameter<std::vector<double>> ("gear_rate", {71.0, 245.0 / 6.0, 245.0 / 6.0, 245.0 / 6.0});
     const auto polarity     = node.has_parameter ("encoder_polarities") ? node.get_parameter ("encoder_polarities").as_integer_array () : node.declare_parameter<std::vector<int64_t>> ("encoder_polarities", default_polarities);

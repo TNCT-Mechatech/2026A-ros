@@ -1,6 +1,8 @@
 /build/
 /install/
 /log/
+# Unmodified upstream checkout, retained locally as a reference.
+/reference/stm32_board_pid_pos_vel_control_set/
 **/compile_commands.json
 /.vscode/settings.json
 __pycache__

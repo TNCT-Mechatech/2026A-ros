@@ -59,11 +59,15 @@ class astar_planner : public rclcpp::Node {
     void                                                             publish_path (bool valid = true, const std::string &reason = "");
     void                                                             clear_navigation (const std::string &reason);
 
-    int         theta_resolution_deg_;
-    std::string map_frame_;
-    double      xy_inflation_, xy_offset_, yaw_offset_;
-    double      grad_alpha_, grad_beta_, grad_gamma_, grad_step_size_;
-    double      replan_distance_threshold_m_, replan_distance_threshold_yaw_deg_;
+    int                 theta_resolution_deg_;
+    std::string         map_frame_;
+    double              xy_inflation_, xy_offset_, yaw_offset_;
+    std::vector<double> start_area_bounds_;
+    double              start_area_xy_inflation_;
+    std::vector<double> keepout_grid_reflection_x_;
+    bool                angular_grid_reflect_yaw_ = false;
+    double              grad_alpha_, grad_beta_, grad_gamma_, grad_step_size_;
+    double              replan_distance_threshold_m_, replan_distance_threshold_yaw_deg_;
 
     nav_msgs::msg::OccupancyGrid           raw_map_;
     nav_msgs::msg::OccupancyGrid           costmap_;
@@ -91,6 +95,7 @@ class astar_planner : public rclcpp::Node {
     void   build_footprint_mask ();
     void   create_costmap ();
     void   create_obstacle_costmap ();
+    void   rasterize_keepout_zones (nav_msgs::msg::OccupancyGrid &grid) const;
     double fix_angle (double angle);
     size_t calculate_min_distance_to_path_index ();
     bool   is_same_goal (const geometry_msgs::msg::PoseStamped &goal1, const geometry_msgs::msg::PoseStamped &goal2, double tolerance = 0.1);
