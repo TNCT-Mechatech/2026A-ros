@@ -1,13 +1,16 @@
 # param_checker の使い方（ROS 2 Jazzy）
 
-速度用の `param_checker` は、4モータの実測feedbackからVRFTでPID gainを求め、
-PID YAML・測定CSV・シリアル診断CSVを保存するノードです。
+速度用の `param_checker` は、実測feedbackからVRFTでゲインを求めます。
+既定は足回り4モータのPID測定、`target_motor_index=0〜3`では選択した1台のPI測定です。
+足回りモードではPID YAML・測定CSV・シリアル診断CSVを保存します。
 位置用の `position_checker` は、保存済み速度PIと生エンコーダカウントを使って位置Pゲインを求めます。
 ROSノード名はどちらも `/param_check` です。1つずつ起動してください。
 [速度用オプション一覧](#11-オプション一覧)と
 [位置用の手順・オプション一覧](#12-位置制御のゲイン測定と動作確認)を参照してください。
 
-以下の1〜11節は速度用の説明です。
+雑巾ラックは[単体調整の手順](#13-雑巾ラックなど機構モーター1台の調整)を使ってください。
+
+以下の1〜11節は既定の足回りモードの説明です。
 **速度用はシリアル接続・初期化が成功すると測定がすぐ始まります。開始ボタンや待機時間はありません。**
 既定では10秒間測定し、gain算出・ファイル保存・ゼロ指令送信の後に自動終了します。
 
@@ -477,8 +480,8 @@ STMの位置制御は `目標生カウント − 現在生カウント` にKpを
    対象モータは `target_motor_index:=0`〜`3` で1台ずつ指定します。
 3. `Position tune started:` から既定30秒間、`axes[1]` を小さい正負の入力へ何度か変化させます。
    他のモータにはゼロdutyを送り、メカナム合成は行いません。
-4. 最後の位置ゲイン表で「保存済み」を確認します。既定では有効サンプル20以上、
-   Kp>0、適合度R²≥0.7を満たす場合だけYAMLを更新します。
+4. 最後の位置ゲイン表で「保存済み」を確認します。既定では有効な計測窓20以上、
+   Kp>0、学習・検証それぞれの適合度R²≥0.7を満たす場合だけYAMLを更新します。
 5. 同じファイルを使って `position_operation:=verify` で起動し、位置制御の動作を確認します。
 
 ```bash
@@ -516,10 +519,27 @@ ros2 launch param_checker param_checker_position.launch.xml \
 | `tune` | 軸入力×速度上限のrps（ID4〜7のうち対象1台） | 保存済み速度PI | 位置Pゲインを算出・保存 |
 | `verify` | 開始生カウント＋軸入力×位置範囲（ID8〜11のうち対象1台） | 保存済み位置P＋速度PI | 実際の位置制御を確認。ゲインファイルを変更しない |
 
-**位置ゲインの同定中に速度指令を送るのは参照実装と同じ方式です。**
-応答モデル `M(s)=1/(τs+1)` の仮想誤差 `τ×生カウントの変化/実時間差` と
-送信したrpsから非負制約付きのPゲインを求めます。生カウントは相対差を取ってから
-doubleへ変換し、大きな累積値でも小さな変化を保持します。
+位置ゲインの同定中は保存済み速度PIへ速度指令を送ります。
+生カウントを既定100msの重ならない区間で差分し、その区間の平均速度から、
+速度PIの応答モデル `G × exp(-L s) / (T s + 1)` を推定します。
+指令は各区間内で保持された値として積分し、推定した遅延で指令変更時刻をずらします。
+整数カウントを10msごとに微分した速度と、瞬間の速度指令を直接一致させる方法から変更しました。
+生カウントは差を取ってからdoubleへ変換し、大きな累積値でも小さな変化を保持します。
+
+前半60%の計測窓で定常ゲインG・応答時定数T・実効遅延Lを推定し、後半40%を
+パラメータ推定に使わず検証します。保存判定のR²は学習R²と検証R²の小さい方です。
+前半・後半とも正負の指令を複数回含めてください。一定方向だけの入力、停止したままの測定、
+途中から機構の特性が変わった測定を、適合度の高い前半だけで採用しないための判定です。
+
+位置Pは、速度応答を含む位置ループの遅い極が目標時定数τに対応するよう決めます。
+CPRを`encoder_ppr × 4 × gear_rate`として、
+`Kp = (τ − T) / (τ² × CPR × G) × exp(−L/τ)`です。
+目標時定数τは推定した`T + L`の3倍以上を要求し、内側の速度応答と分離します。
+この条件は目標応答の設定確認であり、実機の摩擦・速度飽和・可動範囲を保証するものではありません。
+推定Gが0.5〜1.5から外れる場合、推定Tが探索上限2秒、またはLが上限0.3秒に達する場合も保存しません。
+
+従来の仮想誤差`τ × Δcount / Δt`によるR²は、比較用の「旧VRFT R²」として残します。
+新しい保存判定は速度応答モデルの予測精度なので、旧R²とは定義が異なります。
 
 `verify` では、最初のfeedbackの生カウントを開始位置として保持します。
 軸0で開始位置、軸+1で開始位置＋範囲、軸-1で開始位置−範囲へ移動します。
@@ -567,7 +587,14 @@ wheel0:
     output_unit: rps
     response_time_seconds: 2.0
     max_rps: 0.03
-    fit_r_squared: 0.95
+    fit_r_squared: 0.95      # 学習と検証の小さい方
+    identification_method: velocity_response_model_v1
+    training_fit_r_squared: 0.98
+    validation_fit_r_squared: 0.95
+    velocity_response_time_seconds: 0.3
+    velocity_delay_seconds: 0.04
+    velocity_steady_gain: 1.0
+    filter_window_seconds: 0.1
     encoder_ppr: 2048
     gear_rate: 40.833332061767578
     encoder_polarity: -1
@@ -584,10 +611,12 @@ verifyでは保存したPPR・ギア比・極性が現在の設定と一致す�
 |---|---|
 | `position_pid_gainN` | 保存に成功した位置ゲイン (`debug_msgs/msg/PidGain`) |
 | `encoder_raw_countN` | 対象の64bit生カウント (`std_msgs/msg/Int64`) |
-| `vrft_position_wheelN.csv` | tuneの測定時刻、生カウント、相対カウント、入力rps、仮想誤差、回帰使用フラグ |
+| `vrft_position_wheelN.csv` | tuneの生データ・旧VRFT診断と、平均入力・実測/モデル平均速度・残差・学習/検証区分 |
 
 CSVの既定保存先はゲインYAMLの親ディレクトリです。同じwheelの再測定では上書きします。
 verifyはこの測定CSVを作成しません。速度用のシリアル診断CSV設定は位置用にはありません。
+`used_for_regression`は旧VRFT診断のフラグです。新モデルに使った窓の終端行には
+`model_partition`が`training`または`validation`で入り、それ以外の行はモデル列が空です。
 
 ### 位置用launch引数（全10項目）
 
@@ -601,13 +630,13 @@ verifyはこの測定CSVを作成しません。速度用のシリアル診断CS
 | `target_motor_index` | `0` | モータ番号0〜3 |
 | `measurement_seconds` | `30.0` | 最初のfeedbackからの実行時間 |
 | `position_measurement_max_rps` | `0.03` | 目標速度・位置制御速度の上限 |
-| `position_response_time_seconds` | `2.0` | 位置VRFTの応答モデル時定数 |
+| `position_response_time_seconds` | `2.0` | 位置応答の遅い極に対応する目標時定数 |
 | `position_range_counts` | `1000` | verify時の開始位置からの±範囲 |
 
 これら9つのROSパラメータはlaunch引数が設定YAMLより優先されます。
 他のROSパラメータは `serial_config` の `param_check.ros__parameters` へ記載します。
 
-### 位置用ROSパラメータ（固有18項目＋共通STM初期化10項目）
+### 位置用ROSパラメータ
 
 | パラメータ | 型 | コード既定値 | 用途・制約 |
 |---|---|---|---|
@@ -619,13 +648,14 @@ verifyはこの測定CSVを作成しません。速度用のシリアル診断CS
 | `target_motor_index` | integer | `0` | 0〜3 |
 | `measurement_seconds` | double | `30.0` | 正の有限値（秒） |
 | `position_response_time_seconds` | double | `2.0` | 正の有限値（秒）。tuneの応答モデル |
+| `position_filter_window_seconds` | double | `0.1` | 重ならないカウント差分区間（秒）。0.02〜0.5 |
 | `position_measurement_max_rps` | double | `0.03` | 正の有限値。他の保存・設定上限でも制限 |
 | `position_range_counts` | integer | `1000` | 1〜1000000000。verifyの±位置範囲 |
 | `axis_y` | integer | `1` | 操作に使うJoy軸番号。0以上 |
 | `invert_axis` | bool | `false` | trueで軸の符号を反転。速度用のy符号反転とは別設定 |
 | `joy_deadband` | double | `0.05` | 0以上1未満。軸の絶対値がこれ未満なら0 |
 | `minimum_fit_r_squared` | double | `0.7` | 0〜1。保存に必要な適合度 |
-| `minimum_samples` | integer | `20` | 保存に必要な有効回帰サンプル数。3以上 |
+| `minimum_samples` | integer | `20` | 保存に必要な計測窓数。モデル推定には別途、学習10窓・検証6窓以上が必要 |
 | `timeout_ms` | integer | `300` | 正の整数。Joy期限 |
 | `feedback_timeout_ms` | integer | `300` | 正の整数。対象モータのfeedback期限 |
 | `stop_mode` | bool | `false` | STMの停止モード |
@@ -663,3 +693,166 @@ ros2 launch param_checker param_checker_position.launch.xml --show-args
 - [初期化設定YAML](config/serial_protocol.yaml)
 - [VRFT実装](include/vrft_auto_tuner/vrft_auto_tuner.hpp)
 - [通信移行報告・実機確認事項](../../docs/stm_serial_migration.md)
+
+
+## 13. 雑巾ラックなど機構モーター1台の調整
+
+`param_checker_rack.launch.py`で、注入STMのmotor index 2だけを調整できます。
+他の3台は常にDuty 0です。`operation`を変え、速度PI → 位置P → 位置制御確認の順に実行します。
+各コマンドは前のプロセスが終了してから起動してください。
+
+### 設定と開始位置
+
+同じポートを使う`inject2026A`と、それを自動再起動するlaunchを停止します。
+ラックを原点スイッチを押していない、可動範囲の中央付近へ配置してください。
+この調整ツールは原点出しをせず、開始位置を基準に生カウントの移動量を監視します。
+スイッチに到達したら停止して測定を中断します。通常運転のスイッチ原点・角度制御は
+`inject2026A`が担当します。
+
+[config/inject_rack.yaml](config/inject_rack.yaml)で、PPR・ギア比・極性とスイッチ入力を実機に合わせます。
+既定値は注入STM用の現在の初期化設定に合わせています。独自設定はこのファイルをコピーし、
+各コマンドへ `serial_config:=/absolute/path/to/config.yaml` を渡してください。
+ゲインの単位と符号が変わるため、エンコーダ設定を変更した場合は速度測定からやり直します。
+
+| 設定 | ラック用既定値 | 内容 |
+|---|---:|---|
+| `target_motor_index` | 2 | 対象モーター。0〜3 |
+| `axis_y` / `invert_axis` | 1 / false | 入力軸と符号反転 |
+| `measurement_max_duty` | 0.2 | 速度PI測定のDuty上限。Joy入力±1でDuty±0.2 |
+| `measurement_max_rps` | 0.5 | 速度測定中の実測速度の停止しきい値、および保存する速度上限 |
+| `measurement_range_counts` | 10000 | 速度測定の開始位置からの生カウント移動量上限。0は無効。位置専用設定がない場合は位置測定にも適用 |
+| `limit_switch_index` | 2 | 原点スイッチ入力番号。0〜3、-1は監視無効 |
+| `limit_switch_active_state` | true | スイッチが押されたときのレベル。active-lowならfalse |
+| `feedback_timeout_ms` | 300 | 対象モーター・監視対象スイッチの返信期限 |
+| `timeout_ms` | 300 | Joy指令の期限 |
+| `require_neutral_on_start` | true | 位置調整でも中立確認後に計時・動作を開始 |
+| `position_measurement_max_rps` | 0.06 | 現在の位置P測定・確認の速度上限。gear=1なら21.6°/秒 |
+| `position_filter_window_seconds` | 0.1 | 速度応答モデルに使う重ならないカウント差分区間（秒） |
+| `position_range_counts` | 100 | 位置確認の範囲。開始位置から±100生カウント |
+| `position_measurement_range_counts` | 1000 | 現在の位置測定・確認の停止しきい値。開始位置から±1000生カウント。0は無効 |
+| `minimum_samples` / `minimum_fit_r_squared` | 20 / 0.7 | 保存に必要な有効サンプル数と適合度 |
+
+上記のカウント範囲は角度ではありません。
+ラック1°のカウントは`encoder_ppr × 4 × gear_rate × rack_transmission_ratio / 360`です。
+実機で動かせる範囲に合わせて設定します。速度測定で実測速度上限に達する場合は、
+まずDuty上限・Joy入力を小さくしてください。保存速度上限は`max_motor_rps[対象]`との小さい方です。
+
+### スイッチ入力を確認する
+
+スイッチを離しているのに`measurement origin switch reached`となる場合は、
+押下判定の入力レベルか入力番号を確認してください。診断モードは全モーターへDuty 0を送り、
+ゲインを変更せず、スイッチ入力の変化を表示します。
+
+```bash
+ros2 launch param_checker param_checker_rack.launch.py operation:=inspect
+```
+
+スイッチを押す・離す操作をすると、`Switch inputs: [0]=... [1]=... [2]=... [3]=...`が出ます。
+変化した番号を`limit_switch_index`へ、押した状態の値を`limit_switch_active_state`へ設定します。
+例えば入力2が離すとtrue・押すとfalseなら、`limit_switch_index: 2`、
+`limit_switch_active_state: false`です。通常運転の`inject2026A/config/serial_ports.yaml`も
+`rack_switch_index: 2`、`rack_switch_active_state: false`に合わせます。
+Ctrl+Cで診断を終了してから測定します。設定した入力が変化しない場合は接続先・配線を確認します。
+
+同じ診断モードでは、各モーターの折り返さない生カウントをInt64で配信します。
+別ターミナルで対象の値を確認できます（Joyは不要です）。
+
+```bash
+ros2 topic echo /encoder_raw_count2
+```
+
+全モーターへDuty 0を送り続けるため、このモードのJoy操作では動きません。
+機構を手で動かせる場合は、例えばラックを90°動かした前後の値を記録します。
+手動で動かせない場合は、速度測定中にも同じトピックを確認できます。
+生カウント差をΔcount、ラックの角度変化をΔdegとすると、実測の
+`counts_per_rack_revolution = abs(Δcount) × 360 / abs(Δdeg)`です。
+`encoder_ppr × 4 × gear_rate × rack_transmission_ratio`と整合するか確認します。
+`encoder_count`は1回転で折り返すため、この校正には使いません。
+起動時の`Encoder calibration`ログはROSが送る設定であり、STMの受信確認ではありません。
+実物の動きに比べて生カウントがほとんど変化しない場合は、対象入力番号、
+エンコーダのA/B相配線、機械的な連動を確認します。換算の確認前にPIDの保存基準を緩めないでください。
+
+### 速度PI → 位置P → 確認
+
+```bash
+source install/setup.bash
+
+# 1. 速度PIの測定。中立にして開始し、左スティック上下を小さな正負入力へ変化させる。
+ros2 launch param_checker param_checker_rack.launch.py operation:=velocity
+
+# 2. 速度ゲインの「Velocity PI saved」を確認後、位置Pを測定。
+ros2 launch param_checker param_checker_rack.launch.py operation:=tune
+
+# 3. 位置ゲインの「保存済み」を確認後、位置制御の動作確認。
+ros2 launch param_checker param_checker_rack.launch.py operation:=verify
+```
+
+ラック用launchの既定は各15秒です。速度測定は対象の返信と中立Joyの確認後に計時を始めます。
+ラック用の位置測定・確認も中立後に開始します。Joy途絶後は停止し、再び中立に戻すまで
+動作を再開しません。途中の中立・Joy途絶では開始済みの計時は続きます。
+
+位置P測定は保存済み速度PIで速度指令を送り、外側の位置Pを同定します。
+`verify`は開始位置＋Joy入力×`position_range_counts`を位置目標として送り、
+中立では開始位置へ戻ります。`inject2026A`のボタン解放時の保持操作とは異なります。
+
+位置P測定中はまだ位置Pを使っていません。Joyの解放時は位置保持へ切り替えず、
+速度PIへ0 rpsを送るため、速度ループの応答に応じた減速距離が生じます。
+位置側の速度を速度PI測定と同じ0.5 rpsにすると、gear=1では180°/秒となり、
+約20°の可動範囲に対して大きい指令になります。低速測定例は0.02 rpsです。
+8192 counts/revなら±100カウントは±4.39°、±200カウントは±8.79°です。
+現在の設定は速度上限0.06 rps・移動限界±1000カウントです。±1000は±43.95°なので、
+実際の可動範囲に合わせて制限を設定し、範囲の中央付近から開始してください。
+
+位置側の速度・範囲をlaunch引数で上書きできます。指定しない項目はYAMLの値を使います。
+
+```bash
+ros2 launch param_checker param_checker_rack.launch.py operation:=tune \
+  position_max_rps:=0.02 position_travel_limit_counts:=200
+
+ros2 launch param_checker param_checker_rack.launch.py operation:=verify \
+  position_max_rps:=0.02 position_range_counts:=100 position_travel_limit_counts:=200
+```
+
+さらに低速にする場合は`position_max_rps:=0.01`を指定します。
+これらの位置用引数は`velocity`と`inspect`には適用しません。
+位置側の実効速度上限は、指定値・STM初期化値・保存済み速度ゲインの上限の最小値です。
+`verify`は保存済み位置ゲインの速度上限も適用します。実効値を起動ログに表示します。
+`position_range_counts`は有効な位置用移動限界より小さく設定します。
+`position_response_time_seconds`で目標応答時定数も上書きできます。既定2秒で、
+値を大きくするとゆっくり追従する位置Pを同定します。速度の上限とは別の設定です。
+`position_filter_window_seconds`でカウント差分の区間幅も指定できます。
+既定0.1秒、設定範囲0.02〜0.5秒です。区間を長くするとカウント量子化の影響が小さくなりますが、
+同じ測定時間から得られる有効区間数は減ります。
+
+保存先は`~/.ros/natto/inject_pid_gain.yaml`、`ROS_HOME`設定時は
+`$ROS_HOME/natto/inject_pid_gain.yaml`です。`gain_output_path:=/absolute/path.yaml`で変更できます。
+`serial_path`、`joy_topic`（既定`/inject/joy`）、`target_motor_index`、
+`measurement_seconds`もlaunch引数で変更できます。
+
+速度測定ではKdを0固定のPIとして直接同定します。有限でKp>0、Ki≥0、
+有効サンプル数・適合度が基準を満たす場合だけ、対象の`wheel2.velocity`とエンコーダ校正を
+一時ファイル経由で保存します。他のモーターやメタデータは保持します。
+**対象の古い位置ゲインは削除されるため、速度測定後は位置Pを再測定してください。**
+位置測定はこのファイルへ`wheel2.position`を追記します。失敗・返信途絶・スイッチ検出・
+移動限界で中断した測定は、既存のゲインファイルを変更しません。
+
+測定が完了したら`inject2026A`を再起動します。既定で同じゲインファイルの`wheel2`を読み込みます。
+通常運転の`rack_max_angle_deg`などの実機設定は別途`inject2026A/config/serial_ports.yaml`へ設定します。
+
+### 足回りモードと検証
+
+既存の足回りlaunchは既定の`target_motor_index=-1`で、従来のメカナム合成・4台PID測定を維持します。
+汎用の速度launchでも`target_motor_index:=0〜3`を渡すと単体PI測定へ切り替わります。
+その場合は`pid=false`と機構に合った`serial_config`・`serial_path`・`gain_output_path`を指定してください。
+単体PIモードでは測定CSVだけを出力し、指令列は`target_duty`です。
+4輪用のシリアル診断CSVは出力しません。
+
+```bash
+colcon build --packages-select param_checker --cmake-args -DBUILD_TESTING=ON
+colcon test --packages-select param_checker --ctest-args -R 'test_single_motor|test_position_vrft|single_motor_pipeline'
+colcon test-result --test-result-base build/param_checker --verbose
+```
+
+テストは疑似STMで速度PI保存・位置P保存・位置指令の確認まで実行し、対象外モーターの停止、
+Joy途絶と中立復帰、返信途絶、スイッチ、移動限界、同定失敗時のファイル保持を確認します。
+実機のモーターは動かしません。

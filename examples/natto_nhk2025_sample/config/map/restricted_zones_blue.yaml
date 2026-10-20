@@ -113,3 +113,9 @@
       - 6.70
     restricted_zones.bucket_3_wall_gap.lidar_ignore: false
     restricted_zones.bucket_3_wall_gap.keepout: true
+
+/planning/astar_planner:
+  ros__parameters:
+    # 初期位置付近だけ壁の膨張幅を緩和する。進入禁止ゾーンは緩和しない。
+    start_area_bounds: [1.0, 2.0, 9.5, 10.5]
+    start_area_xy_inflation: 0.30

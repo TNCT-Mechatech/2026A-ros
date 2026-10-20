@@ -228,7 +228,7 @@ void default_action::timer_callback () {
             wait_started_ = false;
         }
     }
-    if (allow_auto_drive_) {
+    if (allow_auto_drive_ && !command_joint_state_.name.empty ()) {
         command_joint_state_.header.stamp = this->now ();
         joint_state_publisher_->publish (command_joint_state_);
     }

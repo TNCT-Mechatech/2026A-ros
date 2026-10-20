@@ -24,6 +24,8 @@ serial_motor_bridge:
 
     timeout_ms: 300
     reconnect_interval_ms: 1000
+    initialization_retry_ms: 100
+    initialization_timeout_ms: 2000
     feedback_timeout_ms: 200
     startup_feedback_timeout_ms: 1000
     feedback_recovery_count: 3

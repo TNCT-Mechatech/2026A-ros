@@ -113,3 +113,13 @@
       - 6.70
     restricted_zones.bucket_3_wall_gap.lidar_ignore: false
     restricted_zones.bucket_3_wall_gap.keepout: true
+
+/planning/astar_planner:
+  ros__parameters:
+    # 赤側だけ、x=2.7mで反転した座標で格子化して青側の境界判定に合わせる。
+    keepout_grid_reflection_x: [2.7]
+    # 姿勢の角度ビンも反転した座標で計算し、半ビンの左右差を防ぐ。
+    angular_grid_reflect_yaw: true
+    # 初期位置付近だけ壁の膨張幅を緩和する。進入禁止ゾーンは緩和しない。
+    start_area_bounds: [3.4, 4.4, 9.5, 10.5]
+    start_area_xy_inflation: 0.30

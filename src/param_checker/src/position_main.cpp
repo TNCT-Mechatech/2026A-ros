@@ -3,6 +3,7 @@
 #include "natto_robot_hardware/pid_gain_path.hpp"
 #include "natto_robot_hardware/serial_initialization.hpp"
 #include "param_checker/position_vrft.hpp"
+#include "param_checker/measurement_guard.hpp"
 #include "debug_msgs/msg/pid_gain.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "std_msgs/msg/int64.hpp"
@@ -17,6 +18,7 @@
 #include <poll.h>
 #include <sstream>
 #include <string>
+#include <thread>
 
 using namespace std::chrono_literals;
 using namespace natto_serial;
@@ -52,6 +54,7 @@ public:
             "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066EFF565653756687235135-if02");
     duration_ = positive("measurement_seconds", 30.0);
     tau_ = positive("position_response_time_seconds", 2.0);
+    filter_window_ = positive("position_filter_window_seconds", 0.1);
     max_rps_ = positive("position_measurement_max_rps", 0.03);
     range_counts_ = declare_parameter<int64_t>("position_range_counts", 1000);
     axis_ = declare_parameter<int>("axis_y", 1);
@@ -70,6 +73,15 @@ public:
     }
     command_timeout_ = std::chrono::milliseconds(timeout);
     feedback_timeout_ = std::chrono::milliseconds(feedback_timeout);
+    const auto shared_travel = declare_parameter<int64_t>("measurement_range_counts", 0);
+    const auto travel = declare_parameter<int64_t>("position_measurement_range_counts", shared_travel);
+    const int switch_index = declare_parameter<int>("limit_switch_index", -1);
+    const bool switch_active = declare_parameter<bool>("limit_switch_active_state", true);
+    require_neutral_ = declare_parameter<bool>("require_neutral_on_start", false);
+    if (travel < 0 || switch_index < -1 || switch_index >= static_cast<int>(MOTORS))
+      throw std::invalid_argument("invalid measurement travel/switch limit");
+    if (operation_ == "verify" && travel > 0 && range_counts_ >= travel)
+      throw std::invalid_argument("position_range_counts must be smaller than position_measurement_range_counts");
     const bool stop_mode = declare_parameter<bool>("stop_mode", false);
     declare_initialization(*this, frames_, 0, stop_mode, 1.5, {-1, 1, -1, 1});
     load_gains();      // Fail before opening hardware if the inner loop is unavailable.
@@ -86,13 +98,15 @@ public:
       frames_.init[i].data.vel_kd = 0.0f;
       frames_.init[i].data.pos_ki = frames_.init[i].data.pos_kd = 0.0f;
     }
-    tuner_ = std::make_unique<param_checker::PositionVrft>(tau_);
+    tuner_ = std::make_unique<param_checker::PositionVrft>(param_checker::PositionVrft::Config{
+      tau_, 4.0 * init.encoder_ppr * init.gear_rate, filter_window_});
     gain_pub_ = create_publisher<debug_msgs::msg::PidGain>(
             "position_pid_gain" + std::to_string(motor_), 10);
     count_pub_ = create_publisher<std_msgs::msg::Int64>(
             "encoder_raw_count" + std::to_string(motor_), 10);
     joy_ = create_subscription<sensor_msgs::msg::Joy>("controller/joy", 10,
         [this](const sensor_msgs::msg::Joy::SharedPtr msg) {
+          if (!frames_.configuration.ready()) { axis_value_ = 0.0; joy_valid_ = false; return; }
           if (axis_ >= static_cast<int>(msg->axes.size()) ||
           !std::isfinite(msg->axes[axis_]))
           {
@@ -113,13 +127,23 @@ public:
     frames_.initialize(*serial_);
     write_command(false);
     opened_ = Clock::now();
+    guard_ = std::make_unique<param_checker::MeasurementGuard>(
+        opened_, feedback_timeout_, travel, switch_index, switch_active);
     timer_ = create_wall_timer(10ms, [this] {tick();});
     RCLCPP_INFO(get_logger(),
-      "Position %s: wheel%d, inner PI=(%.6g, %.6g, 0), limit=%.6g rps. Waiting for feedback.",
-            operation_.c_str(), motor_, velocity_kp_, velocity_ki_, max_rps_);
+      "Position %s: wheel%d, inner PI=(%.6g, %.6g, 0), limit=%.6g rps (%.3f counts/s), "
+      "verify range=+/- %lld counts, travel limit=+/- %lld counts, response=%.3fs. Waiting for feedback.",
+      operation_.c_str(), motor_, velocity_kp_, velocity_ki_, max_rps_,
+      max_rps_ * 4.0 * init.encoder_ppr * init.gear_rate,
+      static_cast<long long>(range_counts_), static_cast<long long>(travel), tau_);
+    if (operation_ == "tune")
+      RCLCPP_INFO(get_logger(), "Position P identification uses the saved velocity PI; Joy controls velocity, not position. "
+        "Response-model fit: %.3fs count windows, first 60%% training / last 40%% validation.", filter_window_);
   }
 
-  ~PositionCheck() override {stop();}
+  ~PositionCheck() override {
+    for (int i = 0; i < 5; ++i) { stop(); std::this_thread::sleep_for(10ms); }
+  }
 
 private:
   using Clock = std::chrono::steady_clock;
@@ -165,6 +189,14 @@ private:
       if (!velocity["controller"] || velocity["controller"].as<std::string>() != "PI") {
         throw std::runtime_error("velocity.controller must be PI");
       }
+    }
+    if (wheel["encoder"]) {
+      const auto encoder = wheel["encoder"];
+      const auto & init = frames_.init[motor_].data;
+      if (encoder["pulses_per_revolution"].as<int>() != init.encoder_ppr ||
+          std::abs(encoder["gear_ratio"].as<double>() - init.gear_rate) > 1e-5 ||
+          (encoder["polarity"] && encoder["polarity"].as<int>() != (init.set_direction ? -1 : 1)))
+        throw std::runtime_error("velocity encoder calibration changed; repeat velocity tuning");
     }
     max_rps_ = std::min(max_rps_, static_cast<double>(frames_.init[motor_].data.max_motor_rps));
     if (velocity["max_rps"]) {
@@ -221,6 +253,7 @@ private:
 
   void write_command(bool active)
   {
+    active = active && frames_.configuration.ready();
     for (size_t i = 0; i < MOTORS; ++i) {
       if (i == static_cast<size_t>(motor_) && active && operation_ == "verify") {
         const long double target = static_cast<long double>(origin_) +
@@ -233,9 +266,9 @@ private:
         frames_.position[i].data.target_pos = static_cast<int64_t>(target);
         SerialFrames::write(*serial_, CMD_POS_FRAME_ID_BASE + i, frames_.position[i]);
       } else if (i == static_cast<size_t>(motor_) && operation_ == "tune") {
-        last_input_rps_ = active ? axis_value_ * max_rps_ : 0.0;
-        frames_.velocity[i].data.target_motor_rps = last_input_rps_;
+        frames_.velocity[i].data.target_motor_rps = active ? axis_value_ * max_rps_ : 0.0;
         SerialFrames::write(*serial_, CMD_VEL_FRAME_ID_BASE + i, frames_.velocity[i]);
+        last_input_rps_ = frames_.velocity[i].data.target_motor_rps;
       } else {
         frames_.duty[i].data.duty = 0.0f;
         SerialFrames::write(*serial_, CMD_DUTY_FRAME_ID_BASE + i, frames_.duty[i]);
@@ -272,31 +305,45 @@ private:
       return;
     }
     const auto received = frames_.drain(*serial_);
+    frames_.service_initialization(*serial_);
+    if (configuration_started_ && received.configuration_lost) {
+      stop();
+      throw std::runtime_error("STM configuration changed during position measurement; gains not saved");
+    }
+    if (!frames_.configuration.ready()) { stop(); return; }
+    if (!configuration_started_) {
+      configuration_started_ = true;
+      guard_->start_feedback_deadline(instant);
+      RCLCPP_INFO(get_logger(), "All STM configurations confirmed: session_id=%u config_id=%u",
+          frames_.configuration.session_id(), frames_.configuration.config_id(0));
+    }
     if (received.motor_updated[motor_]) {
       const auto & data = frames_.feedback[motor_].data;
       if (!std::isfinite(data.measured_wheel_rps)) {
         throw std::runtime_error("non-finite motor feedback");
       }
+      guard_->motor(instant, data.encoder_raw_count);
       last_feedback_ = instant;
-      if (!started_) {
-        started_ = true;
-        started_at_ = instant;
-        origin_ = data.encoder_raw_count;
-        RCLCPP_INFO(get_logger(), "Position %s started: origin=%lld counts, duration=%.2fs",
-                    operation_.c_str(), static_cast<long long>(origin_), duration_);
-      }
       std_msgs::msg::Int64 count;
       count.data = data.encoder_raw_count;
       count_pub_->publish(count);
-      if (operation_ == "tune") {
+      if (operation_ == "tune" && started_) {
         tuner_->update(last_input_rps_, data.encoder_raw_count,
                     std::chrono::duration<double>(instant - started_at_).count());
       }
     }
-    if ((!started_ && instant - opened_ > feedback_timeout_) ||
-      (started_ && instant - last_feedback_ > feedback_timeout_))
-    {
-      throw std::runtime_error("target motor feedback timed out; gains were not saved");
+    if (received.switches_updated && guard_->switch_index() >= 0)
+      guard_->switches(instant, frames_.switches.data.state[guard_->switch_index()]);
+    guard_->check(instant);
+    const bool joy_fresh = joy_valid_ && instant - last_joy_ < command_timeout_;
+    if (!joy_fresh) neutral_seen_ = false;
+    if (guard_->ready() && joy_fresh && axis_value_ == 0) neutral_seen_ = true;
+    if (!started_ && guard_->ready() && (!require_neutral_ || neutral_seen_)) {
+      started_ = true;
+      started_at_ = instant;
+      origin_ = frames_.feedback[motor_].data.encoder_raw_count;
+      RCLCPP_INFO(get_logger(), "Position %s started: origin=%lld counts, duration=%.2fs",
+                  operation_.c_str(), static_cast<long long>(origin_), duration_);
     }
     if (started_ && std::chrono::duration<double>(instant - started_at_).count() >= duration_) {
       stop();
@@ -307,7 +354,7 @@ private:
       finished_at_ = instant;
       return;
     }
-    const bool active = started_ && joy_valid_ && instant - last_joy_ < command_timeout_;
+    const bool active = started_ && guard_->ready() && joy_fresh && (!require_neutral_ || neutral_seen_);
     write_command(active);      // 100 Hz refresh, with independent Joy/feedback deadlines.
   }
 
@@ -335,6 +382,15 @@ private:
       position["response_time_seconds"] = tau_;
       position["max_rps"] = max_rps_;
       position["fit_r_squared"] = result.r_squared;
+      position["identification_method"] = "velocity_response_model_v1";
+      position["training_fit_r_squared"] = result.training_r_squared;
+      position["validation_fit_r_squared"] = result.validation_r_squared;
+      position["raw_vrft_fit_r_squared"] = result.raw_r_squared;
+      position["velocity_response_time_seconds"] = result.velocity_response_s;
+      position["velocity_delay_seconds"] = result.delay_s;
+      position["velocity_steady_gain"] = result.velocity_gain;
+      position["filter_window_seconds"] = filter_window_;
+      position["fit_windows"] = result.used_samples;
       const auto & init = frames_.init[motor_].data;
       position["encoder_ppr"] = init.encoder_ppr;
       position["gear_rate"] = static_cast<double>(init.gear_rate);
@@ -364,13 +420,23 @@ private:
       std::filesystem::create_directories(parent);
       std::ofstream stream(csv_path_);
       stream <<
-        "wheel,time_sec,encoder_raw_count,relative_position_count,input_rps,virtual_error_count,used_for_regression\n";
+        "wheel,time_sec,encoder_raw_count,relative_position_count,input_rps,virtual_error_count,used_for_regression,"
+        "model_mean_input_rps,model_measured_rps,model_predicted_rps,model_residual_rps,model_partition\n";
       stream << std::setprecision(17);
+      const auto &models = tuner_->model_samples();
+      size_t model_index = 0, source_index = 0;
       for (const auto & sample : tuner_->samples()) {
         stream      << motor_ << ',' << sample.time << ',' << sample.raw_count << ','
                     << sample.relative_count << ',' << sample.input_rps << ',' <<
           sample.virtual_error
-                    << ',' << sample.used << '\n';
+                    << ',' << sample.used;
+        if (model_index < models.size() && models[model_index].source_index == source_index) {
+          const auto &m = models[model_index++];
+          stream << ',' << m.input_rps << ',' << m.measured_rps << ',' << m.predicted_rps << ','
+                 << m.measured_rps - m.predicted_rps << ',' << (m.training ? "training" : "validation");
+        } else stream << ",,,,,";
+        stream << '\n';
+        ++source_index;
       }
       stream.flush();
       if (!stream) {throw std::runtime_error("CSV write failed");}
@@ -383,7 +449,7 @@ private:
   {
     const auto result = tuner_->result();
     const float hardware_kp = static_cast<float>(result.kp);
-    const bool valid = std::isfinite(result.kp) && hardware_kp > 0.0f &&
+    const bool valid = result.model_valid && std::isfinite(result.kp) && hardware_kp > 0.0f &&
       std::isfinite(hardware_kp) && result.used_samples >= static_cast<size_t>(minimum_samples_) &&
       std::isfinite(result.r_squared) && result.r_squared >= minimum_fit_;
     const bool saved = valid && save_gain(result);
@@ -395,15 +461,20 @@ private:
       gain_pub_->publish(msg);
     }
     std::ostringstream summary;
-    summary     << "\n位置PIDゲインの決定値 (VRFT / P制御)\n"
+    summary     << "\n位置PIDゲインの決定値 (速度応答モデル / P制御)\n"
                 << "対象     | Kp [rps/count] | Ki | Kd | 判定\n"
                 << "wheel" << motor_ << "   | " << std::scientific << std::setprecision(6)
                 << result.kp << "   | 0  | 0  | " << (saved ? "保存済み" : "保存しませんでした") << '\n'
                 << "適合度 R^2: " << std::fixed << std::setprecision(4) << result.r_squared
-                << " （必要値 " << minimum_fit_ << "）、有効サンプル: " << result.used_samples << '\n'
+                << " （必要値 " << minimum_fit_ << "）、有効窓数: " << result.used_samples << '\n'
+                << "モデル R^2: 学習=" << result.training_r_squared << ", 検証=" << result.validation_r_squared
+                << "、旧VRFT R^2=" << result.raw_r_squared << '\n'
+                << "推定速度応答: 時定数=" << result.velocity_response_s << "s, 遅延=" << result.delay_s
+                << "s, 定常ゲイン=" << result.velocity_gain << '\n'
+                << "モデル判定: " << result.reason << '\n'
                 << "速度PI: Kp=" << velocity_kp_ << ", Ki=" << velocity_ki_ << ", Kd=0\n"
                 << "PID YAML: " << gain_path_ << '\n';
-    if (!valid) {summary << "入力を正負に変化させて再測定してください。既存のYAMLは更新していません。\n";}
+    if (!valid) {summary << "測定の前半・後半とも入力を正負に変化させ、モデル判定・検証R^2を確認してください。既存のYAMLは更新していません。\n";}
     if (saved) {RCLCPP_INFO(get_logger(), "%s", summary.str().c_str());} else {
       RCLCPP_WARN(get_logger(), "%s", summary.str().c_str());
     }
@@ -413,11 +484,15 @@ private:
   int motor_{0}, axis_{1}, minimum_samples_{20};
   int64_t range_counts_{1000}, origin_{0};
   double duration_{30}, tau_{2}, max_rps_{0.03}, deadband_{0.05}, minimum_fit_{0.7};
+  double filter_window_{0.1};
   double velocity_kp_{0}, velocity_ki_{0}, position_kp_{0}, axis_value_{0}, last_input_rps_{0};
   bool invert_axis_{false}, joy_valid_{false}, started_{false}, finishing_{false};
+  bool require_neutral_{false}, neutral_seen_{false};
+  std::unique_ptr<param_checker::MeasurementGuard> guard_;
   Clock::time_point opened_{}, started_at_{}, last_joy_{}, last_feedback_{}, finished_at_{};
   std::chrono::milliseconds command_timeout_{300}, feedback_timeout_{300};
   SerialFrames frames_;
+  bool configuration_started_{false};
   std::unique_ptr<LinuxHardwareSerial> device_;
   std::unique_ptr<SerialBridge> serial_;
   std::unique_ptr<param_checker::PositionVrft> tuner_;

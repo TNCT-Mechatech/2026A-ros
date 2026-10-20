@@ -34,6 +34,11 @@ class SerialDiagnostics {
     void observe_watchdog (SerialWatchdog *watchdog) {
         watchdog_ = watchdog;
     }
+    void configuration_status(bool ready, bool failed, const std::string &message) {
+        configuration_ready_ = ready;
+        configuration_failed_ = failed;
+        configuration_message_ = message;
+    }
     void write_result (int result, unsigned int length, int error) {
         const auto time = std::chrono::steady_clock::now ();
         last_result_    = result;
@@ -78,6 +83,8 @@ class SerialDiagnostics {
             s.add ("command_age_sec", watchdog_->command_age (time));
         }
         s.add ("reconnect_attempts", reconnect_attempts_);
+        s.add("configuration_ready", configuration_ready_);
+        s.add("configuration_state", configuration_message_);
         s.add ("device", path_);
         s.add ("port_open", open);
         s.add ("port_disconnected", disconnected);
@@ -90,11 +97,13 @@ class SerialDiagnostics {
         s.add ("last_write_error", last_errno_ ? std::strerror (last_errno_) : (last_result_ >= 0 && static_cast<unsigned int> (last_result_) < expected_bytes_ ? "short write" : "none"));
         s.add ("last_success_ros_sec", std::to_string (last_success_ros_));
         s.add ("last_success_age_sec", success_ ? age (last_success_) : -1.0);
-        s.add ("operational_state", !open || disconnected || state != SerialWatchdog::State::Ready ? "STOPPED" : idle ? "IDLE" : "RUNNING");
+        s.add ("operational_state", !open || disconnected || !configuration_ready_ || state != SerialWatchdog::State::Ready ? "STOPPED" : idle ? "IDLE" : "RUNNING");
         if (!open || disconnected)
             s.summary (H::ERROR, "Serial port unavailable/disconnected");
         else if (result < 0)
             s.summary (H::STALE, "Unable to inspect serial port state");
+        else if (!configuration_ready_)
+            s.summary(configuration_failed_ ? H::ERROR : H::WARN, configuration_message_);
         else if (state == SerialWatchdog::State::FeedbackTimeout || state == SerialWatchdog::State::UpdateError)
             s.summary (H::ERROR, SerialWatchdog::name (state));
         else if (consecutive_ >= static_cast<uint64_t> (error_limit_))
@@ -108,6 +117,8 @@ class SerialDiagnostics {
     }
     rclcpp::Node                         *node_;
     SerialWatchdog                       *watchdog_ = nullptr;
+    bool configuration_ready_{true}, configuration_failed_{false};
+    std::string configuration_message_{"Not monitored"};
     std::string                           path_;
     diagnostic_updater::Updater           updater_;
     int                                   fd_ = -1, error_limit_ = 3, last_result_ = 0, last_errno_ = 0;

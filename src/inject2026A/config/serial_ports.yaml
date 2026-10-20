@@ -1,12 +1,29 @@
 inject_serial_node:
   ros__parameters:
+    inject_pid: true           # true: ラック位置PID、false: エンコーダ不要のDuty操作。
+    rack_open_loop_duty: 0.2   # PID OFFで□/△を押している間のDuty上限。
+    rack_manual_duty: 0.2      # PID ONでもbuttons[2]/[3]でDuty +/-。自動移動に優先、解放で停止。
+    rack_angle_profile: true   # buttons[4]/[5]で指定角度へ台形加速。count_profileより優先。
+    rack_velocity_feedforward: true  # 保存済み速度応答モデルで速度・加減速を補償する。
+    rack_target_angle_4_deg: 15.0
+    rack_target_angle_5_deg: 25.0
+    rack_acceleration_deg_s2: 30.0
+    rack_position_tolerance_deg: 0.2  # 目標角度への到達判定。
+    rack_range_tolerance_deg: 1.0     # 可動範囲外の停止判定。原点付近の小さなずれを許容。
+    rack_count_profile: true   # angle_profile=falseのとき、true: 生カウント移動、false: □/△角度操作。
+    rack_target_relative_count: -30  # スイッチ原点からの目標。角度ではなく生カウント。
+    rack_max_speed_counts_s: 100.0
+    rack_acceleration_counts_s2: 40.0
+    rack_position_tolerance_counts: 1
+    rack_settle_ms: 100
+    rack_motion_timeout_s: 20.0
     reconnect_interval_ms: 1000
     timeout_ms: 300
     # Encoder constructor defaults from STM; verify separately for inject and roll.
     encoder_ppr: [2048, 2048, 2048, 2048]
     gear_rate: [71.0, 40.833333333333336, 40.833333333333336, 40.833333333333336]
     encoder_polarities: [1, 1, 1, 1]
-    max_motor_rps: [4.0, 4.0, 4.0, 4.0]
+    max_motor_rps: [0.3, 0.3, 0.3, 0.3]
     stop_mode: false
     pos_kp: [0.0, 0.0, 0.0, 0.0]
     pos_ki: [0.0, 0.0, 0.0, 0.0]
@@ -14,6 +31,21 @@ inject_serial_node:
     reset_encoder_origin: [false, false, false, false]
     reset_encoder_origin_with_switch: [false, false, false, false]
     encoder_origin_switch_state: [true, true, true, true]
+    # Rack motor index 2 / STM switch input index 2.
+    # 角度指定では保存済みゲインのPPR・gear_rate・極性を適用して換算する。
+    rack_transmission_ratio: 1.0  # 設定済みgear_rateの出力軸回転数 / ラック回転数。直結なら1.0。
+    rack_angle_count_sign: 1     # 原点から離れる方向で生カウントが増加:+1、減少:-1。
+    rack_max_angle_deg: 30.0     # 原点スイッチを0°とする可動範囲上限。実機に合わせる。
+    rack_speed_deg_s: 15.0
+    rack_max_rps: 0.2         # 実効上限は保存済みPIDとの小さい方（現在0.06rps=21.6度/秒）。
+    rack_homing_duty: -0.1      # △で原点へ寄せるDuty。実機の方向に合わせる。
+    rack_homing_timeout_s: 10.0
+    rack_switch_index: 2        # 原点スイッチのSTM入力番号(0..3)。
+    rack_switch_active_state: true
+    rack_switch_debounce_ms: 50
+    rack_feedback_timeout_ms: 200
+    # rack_pid_gain_path未指定: ~/.ros/natto/inject_pid_gain.yaml (ROS_HOMEにも対応)。
+    # ラックは以下の設定と独立にmotor 2とスイッチ返信の鮮度を監視する。
     # 旧send-only運用設定を維持。新STMの返信監視にはtrueを指定。
     monitor_serial_updates: false
     # monitor_serial_updates=trueのときだけ使用。
@@ -50,4 +82,4 @@ roll_serial_node:
     restart_timeout_ms: 1000
     restart_recovery_ms: 3000
     # ロール用ST-Link。USBの接続位置には依存しません。
-    serial_path: "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_0671FF555185754867214745-if02"
+    serial_path: "/dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_066FFF505071655067254119-if02"

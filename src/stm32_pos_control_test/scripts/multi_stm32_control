@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Run one independent SerialBridge node per STM, with one command terminal."""
+
+import argparse
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+
+import yaml
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
+
+
+def expand_path(value):
+    return str(Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve())
+
+
+def load_config(path, selected=None):
+    with open(path, encoding="utf-8") as stream:
+        config = yaml.safe_load(stream)
+    if not isinstance(config, dict) or not isinstance(config.get("boards"), dict):
+        raise ValueError("config must contain a boards mapping")
+    shared = config.get("parameters", {})
+    if not isinstance(shared, dict):
+        raise ValueError("parameters must be a mapping")
+    names = selected or list(config["boards"])
+    if not names or len(names) != len(set(names)):
+        raise ValueError("select at least one board, without duplicate names")
+    boards, ports, csv_paths = {}, set(), set()
+    for name in names:
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
+            raise ValueError(f"invalid ROS board namespace: {name}")
+        if name not in config["boards"]:
+            raise ValueError(f"unknown board: {name}")
+        override = config["boards"][name]
+        if not isinstance(override, dict):
+            raise ValueError(f"{name}: board parameters must be a mapping")
+        params = {**shared, **override}
+        if not params.get("serial_path") or not params.get("pid_gain_path"):
+            raise ValueError(f"{name}: serial_path and pid_gain_path are required")
+        for field in ("serial_path", "pid_gain_path", "csv_path"):
+            if params.get(field):
+                params[field] = expand_path(params[field])
+        if params["serial_path"] in ports:
+            raise ValueError(f"duplicate serial device: {params['serial_path']}")
+        ports.add(params["serial_path"])
+        if params.get("csv_path"):
+            if params["csv_path"] in csv_paths:
+                raise ValueError(f"duplicate CSV output: {params['csv_path']}")
+            csv_paths.add(params["csv_path"])
+        boards[name] = params
+    # Never let any board's log overwrite another board's calibration file.
+    gains = {params["pid_gain_path"] for params in boards.values()}
+    if gains & csv_paths:
+        raise ValueError("CSV outputs must differ from all PID gain files")
+    default = config.get("default_board", names[0])
+    return boards, default if default in boards else names[0]
+
+
+class MultiController:
+    def __init__(self, boards, default, executable):
+        self.boards = boards
+        self.selected = default
+        self.executable = executable
+        self.processes = {}
+        self.readers = []
+        self.output_lock = threading.Lock()
+        self.directory = tempfile.TemporaryDirectory(prefix="multi-stm32-")
+
+    def say(self, text):
+        with self.output_lock:
+            print(text, flush=True)
+
+    def start(self):
+        for name, params in self.boards.items():
+            path = Path(self.directory.name) / f"{name}.yaml"
+            path.write_text(yaml.safe_dump({"/**": {"ros__parameters": params}}), encoding="utf-8")
+            # Each process owns its own port, frame registry, gains, timers and CSV.
+            # The ROS namespace separates feedback topics and node names.
+            process = subprocess.Popen(
+                [self.executable, "--ros-args", "--params-file", str(path),
+                 "-r", f"__ns:=/{name}"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, start_new_session=True,
+            )
+            self.processes[name] = process
+            reader = threading.Thread(target=self.read_output, args=(name, process), daemon=True)
+            reader.start()
+            self.readers.append(reader)
+            self.say(f"[{name}] starting: {params['serial_path']}")
+
+    def read_output(self, name, process):
+        for line in process.stdout:
+            self.say(f"[{name}] {line.rstrip()}")
+        code = process.wait()
+        self.say(f"[{name}] exited (code={code}); other boards continue")
+
+    def send(self, name, command):
+        process = self.processes[name]
+        if process.poll() is not None:
+            self.say(f"[{name}] unavailable (exit={process.returncode})")
+            return False
+        try:
+            process.stdin.write(command + "\n")
+            process.stdin.flush()
+            return True
+        except (BrokenPipeError, OSError):
+            self.say(f"[{name}] command pipe closed")
+            return False
+
+    def route(self, line):
+        line = line.strip()
+        if not line:
+            return True
+        if line in ("quit", "exit", "q"):
+            return False
+        if line in ("help", "h"):
+            self.say(
+                "use <board>                  Select the default board\n"
+                "<board> vel 0.02              Send to a named board\n"
+                "<board> pos 0 1000            Send motor 0 an absolute raw-count target\n"
+                "vel 0.02 / pos 1000           Send to the selected board\n"
+                "all <command>                Send to every board\n"
+                "stop                         Stop every board\n"
+                "status                       Show every board's process and motor status\n"
+                "<board> help                 Show original single-board commands\n"
+                "quit                         Stop all boards and exit"
+            )
+            return True
+        parts = line.split(maxsplit=1)
+        if parts[0] == "use":
+            if len(parts) == 2 and parts[1] in self.boards:
+                self.selected = parts[1]
+                self.say(f"Selected board: {self.selected}")
+            else:
+                self.say("Available boards: " + ", ".join(self.boards))
+        elif line in ("stop", "status"):
+            for name, process in self.processes.items():
+                if line == "status":
+                    state = "running" if process.poll() is None else f"exited ({process.returncode})"
+                    self.say(f"[{name}] {state}; topics=/{name}/feedback0..3")
+                self.send(name, line)
+        elif parts[0] == "all":
+            if len(parts) == 2:
+                for name in self.boards:
+                    self.send(name, parts[1])
+            else:
+                self.say("Usage: all <command>")
+        elif parts[0] in self.boards:
+            if len(parts) == 2:
+                self.send(parts[0], parts[1])
+            else:
+                self.say(f"Usage: {parts[0]} <command>")
+        else:
+            self.send(self.selected, line)
+        return True
+
+    def close(self):
+        for name, process in self.processes.items():
+            if process.poll() is None:
+                self.send(name, "stop")
+                self.send(name, "quit")
+        for process in self.processes.values():
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGINT)
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+            process.stdin.close()
+        for reader in self.readers:
+            reader.join(timeout=1)
+        for process in self.processes.values():
+            process.stdout.close()
+        self.directory.cleanup()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", help="board configuration YAML")
+    parser.add_argument("--boards", nargs="+", help="start only the named boards")
+    parser.add_argument("--executable", help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    controller = None
+    try:
+        config = args.config or str(
+            Path(get_package_share_directory("stm32_pos_control_test")) / "config/multi_stm32.yaml"
+        )
+        executable = args.executable or str(
+            Path(get_package_prefix("stm32_pos_control_test")) /
+            "lib/stm32_pos_control_test/stm32_pos_control_test"
+        )
+        boards, default = load_config(config, args.boards)
+        controller = MultiController(boards, default, executable)
+        controller.start()
+        controller.route("help")
+        controller.say(f"Default board: {default}. Wait for each board's Ready log before commands.")
+        while True:
+            if not controller.route(input(f"stm32[{controller.selected}]> ")):
+                break
+    except (KeyboardInterrupt, EOFError):
+        pass
+    except (OSError, ValueError, yaml.YAMLError) as error:
+        print(f"multi_stm32_control error: {error}", file=sys.stderr)
+        return 1
+    finally:
+        if controller is not None:
+            controller.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -9,6 +9,8 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(natto_system_monitor REQUIRED)
 find_package(natto_robot_hardware REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -45,7 +47,7 @@ add_executable(main
 )
 
 
-ament_target_dependencies(main rclcpp std_msgs sensor_msgs geometry_msgs natto_system_monitor natto_robot_hardware)
+ament_target_dependencies(main rclcpp rcl_interfaces std_msgs sensor_msgs geometry_msgs natto_system_monitor natto_robot_hardware)
 target_compile_features(main PRIVATE cxx_std_17)
 
 foreach(node ${node_list})
@@ -58,6 +60,7 @@ foreach(node ${node_list})
   )
   target_link_libraries(${node}
     serial_bridge_transport
+    yaml-cpp
     "${rclcpp_LIBRARIES}"
     "${std_msgs_LIBRARIES}"
   )
@@ -87,6 +90,15 @@ install(TARGETS
 
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_rack_controller test/test_rack_controller.cpp)
+  target_compile_features(test_rack_controller PRIVATE cxx_std_17)
+  target_link_libraries(test_rack_controller yaml-cpp)
+  ament_add_gtest(test_rack_count_controller test/test_rack_count_controller.cpp)
+  target_compile_features(test_rack_count_controller PRIVATE cxx_std_17)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(rack_serial_integration test/test_rack_serial.py
+    TIMEOUT 60 ENV INJECT_TEST_EXECUTABLE=$<TARGET_FILE:main>)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)

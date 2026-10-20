@@ -18,16 +18,20 @@ public:
 };
 
 TEST(SerialProtocol, NativeABI) {
-    EXPECT_EQ(sizeof(InitializationPackets), 44u);
+    EXPECT_EQ(sizeof(InitializationPackets), 52u);
+    EXPECT_EQ(sizeof(InitializationAck), 20u);
     EXPECT_EQ(sizeof(MotorCommandVel), 4u);
     EXPECT_EQ(sizeof(MotorCommandPos), 8u);
     EXPECT_EQ(sizeof(MotorCommandDuty), 4u);
-    EXPECT_EQ(sizeof(MotorFeedback), 32u);
+    EXPECT_EQ(sizeof(MotorFeedback), 40u);
+    EXPECT_EQ(offsetof(InitializationPackets, session_id), 44u);
+    EXPECT_EQ(offsetof(InitializationPackets, config_id), 48u);
+    EXPECT_EQ(offsetof(MotorFeedback, applied_session_id), 32u);
     EXPECT_EQ(sizeof(SwitchFeedback), 4u);
     EXPECT_EQ(offsetof(MotorFeedback, encoder_raw_count), 16u);
 }
 
-TEST(SerialProtocol, AllTwentyOneFramesRegisterAndRoundTrip) {
+TEST(SerialProtocol, AllTwentyFiveFramesRegisterAndRoundTrip) {
     MemorySerial tx, rx;
     SerialBridge sender(&tx, 1024), receiver(&rx, 1024);
     SerialFrames outgoing, incoming;
@@ -35,6 +39,11 @@ TEST(SerialProtocol, AllTwentyOneFramesRegisterAndRoundTrip) {
     ASSERT_NO_THROW(incoming.register_all(receiver));
     for (size_t i=0; i<MOTORS; ++i) {
         outgoing.init[i].data.encoder_ppr = 2048+i;
+        outgoing.init[i].data.session_id = 123;
+        outgoing.init[i].data.config_id = 50+i;
+        outgoing.ack[i].data = {123, 50+static_cast<uint32_t>(i), 123, 50+static_cast<uint32_t>(i), InitializationResult::Applied, {0,0,0}};
+        outgoing.feedback[i].data.applied_session_id = 123;
+        outgoing.feedback[i].data.applied_config_id = 50+i;
         outgoing.velocity[i].data.target_motor_rps = -2.5f+i;
         outgoing.position[i].data.target_pos = -(INT64_C(1)<<40)+i;
         outgoing.duty[i].data.duty = -.5f;
@@ -42,13 +51,18 @@ TEST(SerialProtocol, AllTwentyOneFramesRegisterAndRoundTrip) {
         outgoing.feedback[i].data.encoder_raw_count = (INT64_C(1)<<40)+i;
     }
     outgoing.switches.data.state[2] = true;
-    for (uint8_t id=0; id<=20; ++id) {
+    for (uint8_t id=0; id<=24; ++id) {
         ASSERT_GT(sender.write(id), 0) << int(id);
         rx.receive(tx.writes.back());
         ASSERT_EQ(receiver.update(), 0) << int(id);
     }
     for (size_t i=0; i<MOTORS; ++i) {
         EXPECT_EQ(incoming.init[i].data.encoder_ppr, 2048+i);
+        EXPECT_EQ(incoming.init[i].data.session_id, 123u);
+        EXPECT_EQ(incoming.init[i].data.config_id, 50+i);
+        EXPECT_EQ(incoming.ack[i].data.result, InitializationResult::Applied);
+        EXPECT_EQ(incoming.ack[i].data.applied_config_id, 50+i);
+        EXPECT_EQ(incoming.feedback[i].data.applied_session_id, 123u);
         EXPECT_FLOAT_EQ(incoming.velocity[i].data.target_motor_rps, -2.5f+i);
         EXPECT_EQ(incoming.position[i].data.target_pos, -(INT64_C(1)<<40)+i);
         EXPECT_FLOAT_EQ(incoming.duty[i].data.duty, -.5f);

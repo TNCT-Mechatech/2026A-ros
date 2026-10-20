@@ -3,3 +3,6 @@ bindings:
   button_1: home
   button_2: bucket_3
   button_3: home
+  button_6: bucket_enemy
+  button_7: avoid
+

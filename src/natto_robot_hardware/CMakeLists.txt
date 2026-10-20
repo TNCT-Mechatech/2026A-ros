@@ -83,6 +83,22 @@ if(BUILD_TESTING)
   target_compile_features(test_serial_protocol PRIVATE cxx_std_17)
   target_include_directories(test_serial_protocol PRIVATE include ${SERIAL_BRIDGE_DIR}/src)
   target_link_libraries(test_serial_protocol serial_bridge_transport)
+  ament_add_gtest(test_configuration_state test/test_configuration_state.cpp)
+  target_compile_features(test_configuration_state PRIVATE cxx_std_17)
+  target_include_directories(test_configuration_state PRIVATE include ${SERIAL_BRIDGE_DIR}/src)
+  target_link_libraries(test_configuration_state serial_bridge_transport)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(configuration_pty test/test_configuration_pty.py TIMEOUT 45
+    ENV WHEEL_TEST_EXECUTABLE=$<TARGET_FILE:serial_motor_bridge>)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ament_add_gtest(test_linux_serial_write
+      test/test_linux_serial_write.cpp
+      ${SERIAL_BRIDGE_DIR}/src/source/LinuxHardwareSerial.cpp)
+    target_compile_features(test_linux_serial_write PRIVATE cxx_std_17)
+    target_include_directories(test_linux_serial_write PRIVATE ${SERIAL_BRIDGE_DIR}/src)
+    set_property(TARGET test_linux_serial_write APPEND_STRING PROPERTY LINK_FLAGS
+      " -Wl,--wrap=write -Wl,--wrap=poll")
+  endif()
 endif()
 
 ament_package()

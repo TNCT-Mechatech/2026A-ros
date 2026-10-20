@@ -107,3 +107,13 @@ def test_auto_serial_restart_parameter_reaches_both_processes(variant, enabled):
     commands = expand(variant, {'auto_serial_restart': str(enabled).lower()})
     for package, name in [('inject2026A', 'main'), ('natto_robot_hardware', 'serial_motor_bridge')]:
         assert parameters(executable(commands, package, name)[0])['auto_restart'] is enabled
+
+
+@pytest.mark.parametrize('variant', ['mecanum_auto.launch.xml', 'mecanum_auto_red.launch.xml', 'mecanum_auto_blue.launch.xml'])
+@pytest.mark.parametrize('enabled', [True, False])
+def test_inject_pid_argument_reaches_mechanisms_only(variant, enabled):
+    commands = expand(variant, {'inject_pid': str(enabled).lower()})
+    mechanism = executable(commands, 'inject2026A', 'main')[0]
+    assert parameters(mechanism)['inject_pid'] is enabled
+    chassis = executable(commands, 'natto_robot_hardware', 'serial_motor_bridge')[0]
+    assert 'inject_pid' not in parameters(chassis)

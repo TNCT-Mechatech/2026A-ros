@@ -12,6 +12,16 @@ destinations:
     yaw_deg: 154.0
   home:
     label: 帰還
-    x: 3.72
-    y: 9.84
+    x: 3.77
+    y: 9.89
     yaw_deg: 90.0
+  avoid:
+    label: 回避
+    x: 1.00
+    y: 9.00
+    yaw_deg: 90.0
+  bucket_enemy:
+    label: 敵バケツねらい
+    x: 4.58
+    y: 8.80
+    yaw_deg: 200.0
